@@ -85,13 +85,24 @@ async function registryLayers(image, arch, fetch) {
 }
 
 export async function inspectStoragePlan({ root, config, existingConfig, resources, execute, operation, fetch = globalThis.fetch }) {
-  const dockerInfo = await captureProbe(execute, { command: "docker", args: ["info", "--format", "{{json .}}"] });
+  // Podman's `info --format json` is docker-compatible in shape but uses its own field names
+  // (host.{arch,cpus,memTotal,cgroupVersion,cgroupControllers,security.rootless}, store.graphRoot).
+  const podman = config.engine === "podman";
+  const engineCommand = podman ? "podman" : "docker";
+  const infoSpec = podman
+    ? { command: "podman", args: ["info", "--format", "{{json .}}"] }
+    : { command: "docker", args: ["info", "--format", "{{json .}}"] };
+  const dockerInfo = await captureProbe(execute, infoSpec);
   let engine = null;
   try { engine = JSON.parse(dockerInfo); } catch { /* Conservative reserve when the engine is unavailable. */ }
+  const engineHost = podman ? (engine?.host ?? {}) : (engine ?? {});
+  const engineGraphRoot = podman
+    ? (engine?.store?.graphRoot ?? engine?.Store?.GraphRoot ?? null)
+    : (engine?.DockerRootDir ?? null);
   const cachedLayers = new Set();
   if (engine && existingConfig) {
     for (const type of ["core", "cli", "browser"]) {
-      const output = await captureProbe(execute, { command: "docker", args: ["image", "inspect", "--format", "{{json .RootFS.Layers}}", `ghcr.io/oll4com/spaceapp-${type}:${existingConfig.version}`] });
+      const output = await captureProbe(execute, { command: engineCommand, args: ["image", "inspect", "--format", "{{json .RootFS.Layers}}", `ghcr.io/oll4com/spaceapp-${type}:${existingConfig.version}`] });
       try { for (const layer of JSON.parse(output)) cachedLayers.add(layer); } catch {}
     }
   }
@@ -108,13 +119,14 @@ export async function inspectStoragePlan({ root, config, existingConfig, resourc
   const missingImages = [];
   let sharedLayersEstimated = false;
   for (const [type, image] of images) {
-    const cached = await captureProbe(execute, { command: "docker", args: ["image", "inspect", "--format", "{{.Id}}", image] });
+    const cached = await captureProbe(execute, { command: engineCommand, args: ["image", "inspect", "--format", "{{.Id}}", image] });
     if (!/^sha256:[a-f0-9]{64}$/.test(cached ?? "")) {
       missingImages.push(image);
       let reserve = imageReserve[type] ?? GiB;
       if (engine && existingConfig && cachedLayers.size && typeof fetch === "function") {
         try {
-          const metadata = await registryLayers(image, /arm|aarch64/.test(engine.Architecture ?? "") ? "arm64" : "amd64", fetch);
+          const engineArch = `${engineHost.Architecture ?? ""} ${engineHost.arch ?? ""}`;
+          const metadata = await registryLayers(image, /arm|aarch64/.test(engineArch) ? "arm64" : "amd64", fetch);
           if (metadata) { reserve = estimateMissingLayers(metadata.layers, metadata.diffIds, cachedLayers); sharedLayersEstimated = true; }
         } catch { /* Offline/private registry: retain the full conservative reserve. */ }
       }
@@ -134,16 +146,16 @@ export async function inspectStoragePlan({ root, config, existingConfig, resourc
     const free = await captureProbe(execute, composeCommand("storageFree", root, existingConfig));
     if (/^\d+$/.test(free ?? "")) dockerFreeDiskBytes = Number(free);
   }
-  // Linux can measure the Docker filesystem directly even on a fresh install.
-  if (engine?.DockerRootDir && process.platform === "linux") {
+  // Linux can measure the engine storage directly even on a fresh install.
+  if (engineGraphRoot && process.platform === "linux") {
     const { inspectSystemResources } = await import("./index.mjs");
-    try { dockerFreeDiskBytes = (await inspectSystemResources(engine.DockerRootDir)).freeDiskBytes; } catch {}
+    try { dockerFreeDiskBytes = (await inspectSystemResources(engineGraphRoot)).freeDiskBytes; } catch {}
   }
   return { ...plan, missingImages, sharedLayersEstimated, dockerFreeDiskBytes,
     resources: { ...resources,
       freeDiskBytes: dockerFreeDiskBytes === null ? resources.freeDiskBytes : Math.min(resources.freeDiskBytes, dockerFreeDiskBytes),
-      engineCpuCount: engine?.NCPU,
-      engineMemoryBytes: engine?.MemTotal
+      engineCpuCount: podman ? (engineHost.CPUs ?? engineHost.cpus) : engine?.NCPU,
+      engineMemoryBytes: podman ? (engineHost.MemTotal ?? engineHost.memTotal) : engine?.MemTotal
     } };
 }
 

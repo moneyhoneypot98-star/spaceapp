@@ -5,6 +5,15 @@ in Docker. The host needs Node.js only for the small `spaceapp` launcher,
 and enough resources for the stack. The launcher installs and starts Docker
 automatically when it is missing.
 
+On Linux and macOS the stack can also run on rootless Podman: run
+`npx --yes run-spaceapp@latest install --engine podman` with Podman >= 4.9 and
+docker-compose v2 (>= 2.20) installed. The launcher never needs root on Linux in
+that mode — containers run under your own user account, workspace files keep
+your user's ownership, and `doctor` reports the engine facts (version, rootless
+mode, cgroup version, limit delegation). See the
+[launcher README](../packages/run-spaceapp/README.md#rootless-podman-linux-and-macos)
+for the full requirements and limits. Docker remains the default.
+
 ## Requirements
 
 Minimum (the `small` profile):
@@ -38,6 +47,23 @@ the native `docker` and `docker-compose` packages through `pacman`. It then
 starts the service. Before adding the current user to the `docker` group, it
 explains that the group grants root-level privileges, adds the user
 automatically, and continues in the same command.
+
+### Linux without a root daemon (rootless Podman)
+
+Prefer not to run a root Docker daemon? Install Podman 4.9+ and docker-compose
+v2 (>= 2.20), enable the user API socket once
+(`systemctl --user enable --now podman.socket`), then run:
+
+```bash
+npx --yes run-spaceapp@latest install --engine podman --profile small
+```
+
+Everything else works the same (`up`, `status`, `logs`, `backup`, `update`,
+`doctor`). Limits: cgroup v2 with delegated cpu/memory controllers is needed for
+`mem_limit`/`cpus` (`doctor` says so clearly when they are skipped);
+`--access host-root` is refused; engine switching on an existing installation is
+refused with a documented `backup`/`restore` migration path; Windows is out of
+scope.
 
 ## macOS
 

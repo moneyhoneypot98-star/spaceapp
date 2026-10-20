@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -133,10 +133,22 @@ export async function ensureDockerAvailable({
   osRelease,
   installArgs,
   scheduleResume = scheduleWindowsInstallResume,
-  confirmRestart = confirmWindowsRestart
-}) {
+  confirmRestart = confirmWindowsRestart,
+  // Fresh installs only: called when Docker is not ready; returning "podman" continues on rootless
+  // Podman instead of installing Docker.
+  offerPodman
+} = {}) {
   if (await dockerIsReady(execute)) {
     return { code: 0, reexecuted: false };
+  }
+  // Docker is missing or not reachable: when Podman is already usable, offer it instead of installing
+  // Docker. The offer happens before any Docker download/installation. The version output (not just the
+  // exit code) must parse, so mocks that only return exit codes never trigger the offer.
+  if (offerPodman && (platform === "linux" || platform === "darwin") && await podmanOfferCandidate(execute)) {
+    const choice = await offerPodman();
+    if (choice === "podman") {
+      return { code: 0, reexecuted: false, engine: "podman" };
+    }
   }
   if (platform === "win32") {
     return ensureWindowsDocker({
@@ -1070,6 +1082,9 @@ function launchDetachedCommand(spec) {
         child = spawn("powershell.exe", windowsPowerShellArgs(spec.operation), options);
       } else if (spec.operation === "open-docker-desktop") {
         child = spawn("open", ["-a", "/Applications/Docker.app"], options);
+      } else if (spec.operation === "start-podman-service") {
+        // Detached rootless user API socket: listens on $XDG_RUNTIME_DIR/podman/podman.sock.
+        child = spawn("podman", ["system", "service", "--time=0"], options);
       } else {
         resolve(1);
         return;
@@ -1095,3 +1110,232 @@ function launchDetachedCommand(spec) {
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
+
+/** Rootless Podman support. The launcher requires Podman >= 4.9 (the `podman compose` provider
+ * dispatch and the keep-id uid=/gid= mapping options; Ubuntu 24.04 ships 4.9.3, Fedora/RHEL 5.x) with a
+ * compose provider for the compose files: docker-compose v2 (>= 2.20, for `depends_on` health conditions
+ * incl. `required: false`) is the supported provider; podman-compose works for simpler stacks but is not
+ * tested here. Installing Podman itself is out of scope; the launcher prints per-distribution instructions. */
+export const PODMAN_MIN_VERSION = "4.9.0";
+export const COMPOSE_PROVIDER_MIN_VERSION = "2.20.0";
+
+export function parsePodmanVersion(output) {
+  const match = /podman(?:\s+version)?\s+(\d+\.\d+(?:\.\d+)?)/.exec(output ?? "");
+  return match ? match[1] : null;
+}
+
+export function versionAtLeast(actual, minimum) {
+  if (!actual) return false;
+  const [a, b] = [actual.split(".").map(Number), minimum.split(".").map(Number)];
+  for (let index = 0; index < 3; index += 1) {
+    const left = a[index] ?? 0, right = b[index] ?? 0;
+    if (left !== right) return left > right;
+  }
+  return true;
+}
+
+async function runProbe(execute, spec) {
+  try {
+    return await execute(spec, { stdin: null, stdout: null, stderr: null });
+  } catch {
+    return 127;
+  }
+}
+
+export async function podmanIsReady(execute) {
+  return await runProbe(execute, { command: "podman", args: ["info"] }) === 0;
+}
+
+/** True only when `podman --version` prints a parseable version >= 5 and `podman info` succeeds. */
+async function podmanOfferCandidate(execute) {
+  const version = parsePodmanVersion(await probeOutput(execute, { command: "podman", args: ["--version"] }));
+  if (!version || !versionAtLeast(version, PODMAN_MIN_VERSION)) return false;
+  return await podmanIsReady(execute);
+}
+
+/** Non-secret engine facts for `doctor` and the support bundle. Version probes run first; the richer
+ * facts come from `podman info --format json`. No paths, images or credentials beyond the engine's own
+ * public fields are included. */
+export async function podmanEngineFacts({ execute }) {
+  const facts = { available: false, version: null, rootless: null, cgroupVersion: null,
+    cgroupControllers: [], composeProvider: null, composeProviderVersion: null };
+  const versionOutput = await probeOutput(execute, { command: "podman", args: ["--version"] });
+  const version = parsePodmanVersion(versionOutput);
+  if (await runProbe(execute, { command: "podman", args: ["--version"] }) !== 0) {
+    return facts;
+  }
+  facts.available = true;
+  facts.version = version;
+  const infoOutput = await probeOutput(execute, { command: "podman", args: ["info", "--format", "{{json .}}"] });
+  try {
+    const info = JSON.parse(infoOutput);
+    facts.rootless = info?.host?.security?.rootless ?? null;
+    facts.cgroupVersion = info?.host?.cgroupVersion ?? null;
+    facts.cgroupControllers = Array.isArray(info?.host?.cgroupControllers) ? info.host.cgroupControllers : [];
+  } catch { /* Facts stay partial; doctor still reports the version probe. */ }
+  return facts;
+}
+
+async function probeOutput(execute, spec) {
+  let output = "";
+  const stdout = new Writable({ write(chunk, _encoding, done) {
+    if (output.length < 1024 * 1024) output += chunk.toString();
+    done();
+  } });
+  try {
+    const code = await execute({ ...spec, timeoutMs: 15000 }, { stdout, stderr: null });
+    return code === 0 ? output.trim() : "";
+  } catch { return ""; }
+}
+
+export async function podmanComposeProviderFacts({ execute }) {
+  const output = await probeOutput(execute, { command: "podman", args: ["compose", "version"] });
+  if (!output) return { available: false, name: null, version: null };
+  const version = /v?(\d+\.\d+(?:\.\d+)?)/.exec(output)?.[1] ?? null;
+  const name = /docker[- ]compose/i.test(output) ? "docker-compose" : /podman-compose/i.test(output) ? "podman-compose" : "compose";
+  return { available: true, name, version };
+}
+
+/** Refuses Windows (out of scope), then verifies Podman >= 5 is installed and reachable, and that a
+ * compose provider exists. Docker stays the default; this path only runs with `--engine podman`. */
+export async function ensurePodmanAvailable({
+  platform = process.platform,
+  env = process.env,
+  stdout = process.stdout,
+  stderr = process.stderr,
+  execute,
+  sleep = wait,
+  launch = launchDetachedCommand
+} = {}) {
+  if (platform === "win32") {
+    stderr.write("Podman is supported on Linux and macOS only (Podman Desktop on WSL is out of scope). Use --engine docker.\n");
+    return { code: 1, reexecuted: false };
+  }
+  const versionOutput = await probeOutput(execute, { command: "podman", args: ["--version"] });
+  const version = parsePodmanVersion(versionOutput);
+  if (!version) {
+    stderr.write(`Podman was not found on PATH. ${podmanInstallHelp(platform)}\n`);
+    return { code: 1, reexecuted: false };
+  }
+  if (!versionAtLeast(version, PODMAN_MIN_VERSION)) {
+    stderr.write(`Podman ${version} is too old. SpaceApp needs Podman ${PODMAN_MIN_VERSION} or newer (rootless) ${podmanInstallHelp(platform)}\n`);
+    return { code: 1, reexecuted: false };
+  }
+  if (!await podmanIsReady(execute)) {
+    if (platform === "darwin") {
+      stderr.write("Podman is installed but its machine is not running. Start it with `podman machine init && podman machine start`, then run install again.\n");
+    } else {
+      stderr.write("Podman is installed but `podman info` failed. Check that your user session can run rootless containers (kernel user namespaces enabled), then run install again.\n");
+    }
+    return { code: 1, reexecuted: false };
+  }
+  const provider = await ensurePodmanComposeProvider({ platform, execute, sleep, launch, stderr });
+  if (provider !== 0) {
+    return { code: provider, reexecuted: false };
+  }
+  stdout.write(`Podman ${version} is ready (rootless Podman uses your own user account; no root daemon runs).\n`);
+  return { code: 0, reexecuted: false };
+}
+
+/** docker-compose v2 talks to Podman over its user API socket; `podman compose` starts the provider
+ * with DOCKER_HOST pointing there when the socket is active. Without the socket the provider fails
+ * late, so the launcher starts a detached rootless `podman system service` when needed. */
+export async function ensurePodmanComposeProvider({
+  platform = process.platform,
+  execute,
+  sleep = wait,
+  launch = launchDetachedCommand,
+  stderr = process.stderr
+} = {}) {
+  let provider = await podmanComposeProviderFacts({ execute });
+  if (provider.available && !versionAtLeast(provider.version ?? "0", COMPOSE_PROVIDER_MIN_VERSION)) {
+    stderr.write(
+      `The compose provider ${provider.name} ${provider.version ?? "(unknown version)"} is too old. ` +
+      `SpaceApp needs docker-compose v2 ${COMPOSE_PROVIDER_MIN_VERSION} or newer for depends_on health conditions. Update it, then run install again.\n`
+    );
+    return 1;
+  }
+  const socketPath = await podmanApiSocketPath();
+  if (provider.available && socketPath) {
+    // docker-compose v2 reaches Podman over the user API socket; podman compose does not export it on
+    // every version, so point the provider (and only the provider) at it. Never overrides an existing
+    // DOCKER_HOST the user configured.
+    process.env.DOCKER_HOST ??= `unix://${socketPath}`;
+    return 0;
+  }
+  if (!provider.available) {
+    stderr.write(
+      "No compose provider for `podman compose` was found. Install docker-compose v2 (for example " +
+      "`sudo apt-get install docker-compose-v2` on Ubuntu/Debian or the docker-compose plugin of your distribution) " +
+      "and run install again.\n"
+    );
+    return 1;
+  }
+  const launched = await launch({ operation: "start-podman-service" }).catch(() => 1);
+  if (launched !== 0) {
+    stderr.write("The compose provider is installed but the Podman API socket is not active. " +
+      "Enable it with `systemctl --user enable --now podman.socket`, then run install again.\n");
+    return 1;
+  }
+  let startedSocketPath = null;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    startedSocketPath = await podmanApiSocketPath();
+    if (startedSocketPath) break;
+    await sleep(1000);
+  }
+  if (!startedSocketPath) {
+    stderr.write("The Podman API socket did not appear. Enable it with `systemctl --user enable --now podman.socket`, then run install again.\n");
+    return 1;
+  }
+  process.env.DOCKER_HOST ??= `unix://${startedSocketPath}`;
+  return 0;
+}
+
+async function podmanApiSocketPath() {
+  // The user service socket lives in the runtime dir of the invoking user (e.g. /run/user/1000).
+  const runtimeDir = process.env.XDG_RUNTIME_DIR ?? `/run/user/${typeof process.getuid === "function" ? process.getuid() : 0}`;
+  const path = join(runtimeDir, "podman", "podman.sock");
+  try {
+    await access(path, 0); // F_OK
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+export function podmanInstallHelp(platform) {
+  if (platform === "darwin") {
+    return "Install it with `brew install podman` (https://podman.io/docs/installation).";
+  }
+  return "Install it with your package manager, for example `sudo dnf install podman` (Fedora/RHEL), " +
+    "`sudo apt-get install podman` (Debian/Ubuntu) or `sudo zypper install podman` (openSUSE).";
+}
+
+/** macOS only: the Podman machine must have enough CPU, memory and disk for the requested profile.
+ * Returns the checks doctor prints and resize instructions when a resource falls short. */
+export async function podmanMachineResourceChecks({ execute, profile, profileRequirements }) {
+  if (process.platform !== "darwin") return [];
+  const output = await probeOutput(execute, { command: "podman", args: ["machine", "inspect", "--format", "{{json .}}"] });
+  let machines = null;
+  try { machines = JSON.parse(output); } catch { return []; }
+  const machine = Array.isArray(machines) ? machines.find((item) => item?.State === "Running") ?? machines[0] : machines;
+  if (!machine) return [{ name: "Podman machine", ok: false, detail: "No Podman machine exists. Create one with `podman machine init`." }];
+  const cpuCount = Number(machine.CPUs ?? machine.cpus ?? 0);
+  const memoryBytes = Number(machine.Memory ?? machine.memory ?? 0);
+  const diskBytes = Number(machine.DiskSize ?? machine.diskSize ?? 0) * (1024 ** 3);
+  const { cpuCount: requiredCpus, memoryBytes: requiredMemory, freshDiskBytes: requiredDisk } = profileRequirements;
+  const checks = [
+    { name: "Podman machine CPUs", ok: cpuCount >= requiredCpus,
+      detail: `${cpuCount} of ${requiredCpus} needed. Resize with \`podman machine set --cpus ${requiredCpus} ${machine.Name ?? "podman-machine-default"}\`, then restart the machine.` },
+    { name: "Podman machine memory", ok: memoryBytes >= requiredMemory,
+      detail: `${(memoryBytes / 1024 ** 3).toFixed(1)} GiB of ${(requiredMemory / 1024 ** 3).toFixed(1)} GiB needed. Resize with \`podman machine set --memory ${Math.ceil(requiredMemory / 1024 ** 3)} ${machine.Name ?? "podman-machine-default"}\`, then restart the machine.` },
+    { name: "Podman machine disk", ok: diskBytes >= requiredDisk,
+      detail: `${(diskBytes / 1024 ** 3).toFixed(1)} GiB of ${(requiredDisk / 1024 ** 3).toFixed(1)} GiB needed. Grow the disk or recreate the machine with a larger disk size, then run install again.` },
+    { name: "Podman machine state", ok: machine.State === "Running",
+      detail: machine.State === "Running" ? "running" : "not running. Start it with `podman machine start`." }
+  ];
+  return checks;
+}
+
+
+
