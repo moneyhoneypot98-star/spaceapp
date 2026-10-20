@@ -118,8 +118,17 @@ const CONFIG_KEYS = new Set([
   "companionsEnabled",
   "optionalModules",
   "installId",
+  "engine",
   "users"
 ]);
+// Container engines the launcher can drive. Docker stays the default; podman compose delegates to a
+// compose provider (docker-compose v2 works), so the same compose files drive both engines.
+export const ENGINES = Object.freeze(["docker", "podman"]);
+export const DEFAULT_ENGINE = "docker";
+/** Services that hold user data (bind mounts and shared volumes); under rootless Podman they map the
+ * host user to container uid 10001 so files written there land with the host user's ownership. */
+export const PODMAN_USERNS_SERVICES = Object.freeze(["spaceapp-core", "spaceapp-cli", "spaceapp-browser"]);
+export const PODMAN_USERNS_MODE = "keep-id:uid=10001,gid=10001";
 
 // Multi-user (SpaceApp accounts with SPACE_MULTI_USER_ENABLED): every user's CLIs run in their own container, with
 // their own keys, logins, memory and workspaces; the core starts each pane in its owner's container.
@@ -297,7 +306,8 @@ export function createDefaultConfig({
   version,
   profile = "light",
   accessMode = "isolated",
-  companionsEnabled = false
+  companionsEnabled = false,
+  engine
 }) {
   assertVersion(version);
   if (!INSTALL_PROFILES.includes(profile)) {
@@ -315,6 +325,7 @@ export function createDefaultConfig({
     accessMode: resolvedAccessMode,
     companionsEnabled,
     optionalModules: "none",
+    ...(engine ? { engine } : {}),
     workspaces: []
   };
 }
@@ -358,6 +369,9 @@ export function validateConfig(config) {
   }
   if (config.optionalModules !== undefined && !OPTIONAL_MODULES_PATTERN.test(config.optionalModules)) {
     throw new Error("optionalModules must be all, none or a comma-separated list of module names.");
+  }
+  if (config.engine !== undefined && !ENGINES.includes(config.engine)) {
+    throw new Error("engine must be docker or podman.");
   }
   // Optional: only installations whose owner said Yes to telemetry have one.
   if (config.installId !== undefined && (typeof config.installId !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(config.installId))) {
@@ -661,11 +675,15 @@ const CLI_SANDBOX_OPTIONS = ["    security_opt:", "      - seccomp=./seccomp-cli
 
 export function renderWorkspaceCompose(config, { cliSandbox = false } = {}) {
   validateConfig(config);
+  // Rootless Podman: relabel workspace bind mounts for SELinux (Fedora/RHEL enforce by default); Docker
+  // users keep the exact same mounts as before.
+  const selinuxBind = config.engine === "podman" ? ["        bind:", '          selinux: "z"'] : [];
   const mounts = config.workspaces.flatMap((workspace) => [
     "      - type: bind",
     `        source: ${JSON.stringify(workspace.hostPath)}`,
     `        target: ${JSON.stringify(workspace.containerPath)}`,
-    `        read_only: ${workspace.readOnly}`
+    `        read_only: ${workspace.readOnly}`,
+    ...selinuxBind
   ]);
   const service = mounts.length > 0
     ? ["    volumes:", ...mounts]
@@ -680,7 +698,8 @@ export function renderWorkspaceCompose(config, { cliSandbox = false } = {}) {
     "      - type: bind",
     `        source: ${JSON.stringify(workspace.hostPath)}`,
     `        target: ${JSON.stringify(workspace.containerPath)}`,
-    `        read_only: ${workspace.readOnly}`
+    `        read_only: ${workspace.readOnly}`,
+    ...selinuxBind
   ];
   const userServices = users.flatMap((user) => {
     const slug = userSlug(user.id);
@@ -739,6 +758,25 @@ export function renderCliHosts(config) {
     [user.id, `/run/spaceapp-cli-users/${userSlug(user.id)}/host.sock`])), null, 2)}\n`;
 }
 
+/**
+ * Rootless Podman overrides (compose.podman.yml): the services that hold user data map the host user to
+ * container uid 10001, so files written to bind mounts and shared named volumes keep the host user's
+ * ownership. `keep-id` also starts the container as the mapped uid when no user is given, and the image
+ * entrypoints need root to gosu down to 10001, so each service is pinned to `user: "0:0"`: container root
+ * maps to one of the host's spare subuids and can still switch to 10001 inside the namespace. Postgres
+ * and Temporal keep Podman's default mapping; their images manage their own users.
+ */
+export function renderPodmanCompose(config) {
+  validateConfig(config);
+  const userServices = (config.users ?? []).map((user) => `  spaceapp-cli-${userSlug(user.id)}:`);
+  return [
+    "services:",
+    ...PODMAN_USERNS_SERVICES.map((service) => [`  ${service}:`, `    userns_mode: "${PODMAN_USERNS_MODE}"`, `    user: "0:0"`]).flat(),
+    ...userServices.flatMap((service) => [service, `    userns_mode: "${PODMAN_USERNS_MODE}"`, `    user: "0:0"`]),
+    ""
+  ].join("\n");
+}
+
 export function renderHostAccessCompose(config) {
   validateConfig(config);
   if (config.accessMode === "isolated") {
@@ -773,6 +811,10 @@ export function composeCommand(action, root, options = {}) {
   const stateRoot = options.stateRoot ?? root;
   validateHome(stateRoot);
   const profile = options.profile ?? "standard";
+  const engine = options.engine ?? DEFAULT_ENGINE;
+  if (!ENGINES.includes(engine)) {
+    throw new Error("engine must be docker or podman.");
+  }
   const settings = profileRuntimeSettings(profile);
   const base = [
     "compose",
@@ -782,6 +824,8 @@ export function composeCommand(action, root, options = {}) {
     "-f", join(stateRoot, "compose.yml"),
     "-f", join(stateRoot, "compose.workspaces.yml"),
     "-f", join(stateRoot, "compose.host-access.yml"),
+    // Podman needs its own overrides (user-namespace mapping for the data services); later files win.
+    ...(engine === "podman" ? ["-f", join(stateRoot, "compose.podman.yml")] : []),
     ...(settings.browserEnabled ? ["--profile", "standard"] : []),
     ...(settings.temporalEnabled ? ["--profile", "workflows"] : []),
     ...(options.companionsEnabled ? ["--profile", "companions"] : [])
@@ -821,7 +865,10 @@ export function composeCommand(action, root, options = {}) {
       "--no-fund",
       "@anthropic-ai/claude-code@2.1.301"
     ],
-    backup: ["exec", "-T", "--user", "0:0", "spaceapp-core", "node", "scripts/portable-backup.mjs"],
+    // Under rootless Podman the core maps the host user to container uid 10001 (compose.podman.yml), so
+    // backup/restore reach the host-owned ./backups bind mount as that user; container root is a
+    // subordinate uid there. Under Docker the images own their data as 10001 and root reaches /backups.
+    backup: ["exec", "-T", "--user", engine === "podman" ? "10001:10001" : "0:0", "spaceapp-core", "node", "scripts/portable-backup.mjs"],
     stopForRestore: ["stop", "spaceapp-core", "spaceapp-cli", "spaceapp-browser"],
     resetOwnerPassword: [
       "exec",
@@ -868,7 +915,7 @@ export function composeCommand(action, root, options = {}) {
       "--rm",
       "--no-deps",
       "--user",
-      "0:0",
+      engine === "podman" ? "10001:10001" : "0:0",
       "--env",
       "SPACE_DATABASE_URL_FILE=/run/secrets/database-url",
       "--entrypoint",
@@ -886,7 +933,7 @@ export function composeCommand(action, root, options = {}) {
   if (!selected) {
     throw new Error(`Unsupported Compose action "${action}".`);
   }
-  return { command: "docker", args: [...base, ...selected] };
+  return { command: engine, args: [...base, ...selected] };
 }
 
 export function composeProjectName(root) {
@@ -920,13 +967,15 @@ export async function writeRuntimeFiles(root, config) {
   await atomicWrite(join(root, "cli-hosts.json"), renderCliHosts(config), 0o644);
   for (const user of config.users ?? []) await mkdir(providerSecretsRoot(root, user.id), { recursive: true, mode: 0o700 });
   await atomicWrite(join(root, "compose.host-access.yml"), renderHostAccessCompose(config));
+  if (config.engine === "podman") await atomicWrite(join(root, "compose.podman.yml"), renderPodmanCompose(config));
 }
 
 export async function prepareInstallation(root, {
   version,
   profile,
   accessMode,
-  companionsEnabled
+  companionsEnabled,
+  engine
 }) {
   validateHome(root);
   await mkdir(root, { recursive: true, mode: 0o700 });
@@ -967,6 +1016,11 @@ export async function prepareInstallation(root, {
   }
   if (companionsEnabled !== undefined && config.companionsEnabled !== companionsEnabled) {
     config = { ...config, companionsEnabled };
+  }
+  // Engine selection is stored once and reused by every later command. Refusing a silent switch protects
+  // data: Docker volumes are invisible to Podman and vice versa.
+  if (engine !== undefined && engine !== (config.engine ?? DEFAULT_ENGINE)) {
+    config = { ...config, engine };
   }
   validateConfig(config);
 

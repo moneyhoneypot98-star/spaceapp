@@ -43,6 +43,57 @@ invoked outside an interactive logon.
 The launcher selects `small`, `medium`, or `large` automatically using CPU,
 RAM and free disk. Docker's CPU and RAM allocation is checked as well.
 
+### Rootless Podman (Linux and macOS)
+
+Docker stays the default. The launcher also runs the full stack on
+**rootless Podman**: Fedora, RHEL and openSUSE ship Podman, some companies do
+not license Docker Desktop, and rootless containers are the safer default on a
+shared workstation. Requirements:
+
+- **Podman 4.9 or newer** (Ubuntu 24.04 ships 4.9.3; Fedora/RHEL 5.x). The
+  launcher does not install Podman; install it with your package manager
+  (`sudo dnf install podman`, `sudo apt-get install podman`,
+  `sudo zypper install podman`, or `brew install podman` on macOS).
+- **A compose provider** for `podman compose`: docker-compose v2 (>= 2.20, the
+  plugin that also serves Docker), for example `sudo apt-get install
+  docker-compose-v2` on Ubuntu/Debian.
+- **The Podman API socket** (docker-compose v2 talks to Podman over
+  `$XDG_RUNTIME_DIR/podman/podman.sock`). Enable it once with
+  `systemctl --user enable --now podman.socket`; when it is absent the launcher
+  starts a detached rootless `podman system service` itself.
+- **cgroup v2 with delegated cpu/memory controllers** (Fedora/RHEL defaults are
+  fine). `doctor` reports the delegation and says clearly when a
+  `mem_limit`/`cpus` cannot be applied instead of failing late.
+
+Run `install --engine podman --profile small` (Linux or macOS). The choice is
+saved in the launcher configuration and every later command (`up`, `status`,
+`logs`, `backup`, `update`, ...) uses it. Without `--engine`, Docker keeps being
+used whenever it works; when Docker is missing but rootless Podman is present,
+the launcher offers Podman (and picks it automatically with
+`--non-interactive`). The selection also works through `--answers`.
+
+Details that matter for rootless Podman:
+
+- The data services (`spaceapp-core`, `spaceapp-cli`, `spaceapp-browser` and
+  per-user CLI containers) run with
+  `userns_mode: keep-id:uid=10001,gid=10001`, so files written to workspace bind
+  mounts and shared volumes keep your user's ownership on the host. The images
+  start as container root and drop to 10001 themselves, which this mapping
+  allows. Postgres and Temporal keep Podman's default mapping.
+- Workspace bind mounts (`workspace add`, read-write and `--read-only`) are
+  relabeled for SELinux (`bind: { selinux: "z" }`), so they work on a host with
+  SELinux enforcing (Fedora). Backup and restore run as the host user, which
+  under rootless Podman is container uid 10001.
+- `--access host-root` is refused under Podman. Switching engines on an existing
+  installation is refused: Docker volumes are not visible to Podman. Migrate by
+  running `backup`, uninstalling with `--purge-data`, installing with the new
+  engine, and `restore`-ing the backup.
+- On macOS the launcher checks that the Podman machine has enough CPUs, memory
+  and disk for the selected profile and explains how to resize it if not.
+
+The launcher does not support Windows (Podman Desktop on WSL) and does not
+support other engines (nerdctl, Colima's containerd mode).
+
 | Profile | CPU | Usable RAM | Fresh free space | Services |
 | --- | --- | --- | --- | --- |
 | small | 4 | 7 GiB | 5.5 GiB | SpaceApp, OpenCode, PostgreSQL |
