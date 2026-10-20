@@ -761,16 +761,18 @@ export function renderCliHosts(config) {
 /**
  * Rootless Podman overrides (compose.podman.yml): the services that hold user data map the host user to
  * container uid 10001, so files written to bind mounts and shared named volumes keep the host user's
- * ownership. The images start as container root and drop to 10001 themselves, which this mapping allows.
- * Postgres and Temporal keep Podman's default mapping; their images manage their own users.
+ * ownership. `keep-id` also starts the container as the mapped uid when no user is given, and the image
+ * entrypoints need root to gosu down to 10001, so each service is pinned to `user: "0:0"`: container root
+ * maps to one of the host's spare subuids and can still switch to 10001 inside the namespace. Postgres
+ * and Temporal keep Podman's default mapping; their images manage their own users.
  */
 export function renderPodmanCompose(config) {
   validateConfig(config);
   const userServices = (config.users ?? []).map((user) => `  spaceapp-cli-${userSlug(user.id)}:`);
   return [
     "services:",
-    ...PODMAN_USERNS_SERVICES.map((service) => [`  ${service}:`, `    userns_mode: "${PODMAN_USERNS_MODE}"`]).flat(),
-    ...userServices.flatMap((service) => [service, `    userns_mode: "${PODMAN_USERNS_MODE}"`]),
+    ...PODMAN_USERNS_SERVICES.map((service) => [`  ${service}:`, `    userns_mode: "${PODMAN_USERNS_MODE}"`, `    user: "0:0"`]).flat(),
+    ...userServices.flatMap((service) => [service, `    userns_mode: "${PODMAN_USERNS_MODE}"`, `    user: "0:0"`]),
     ""
   ].join("\n");
 }

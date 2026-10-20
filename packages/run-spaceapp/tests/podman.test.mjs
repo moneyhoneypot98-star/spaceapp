@@ -88,9 +88,10 @@ test("the podman override maps the host user to container uid 10001 for the data
   const config = validateConfig({ ...createDefaultConfig({ version: "1.1.6" }), engine: "podman", users: [{ id: "user:testuser", workspaces: [] }] });
   const rendered = renderPodmanCompose(config);
   for (const service of PODMAN_USERNS_SERVICES) {
-    assert.match(rendered, new RegExp(`  ${service}:\\n    userns_mode: "${PODMAN_USERNS_MODE}"`));
+    assert.match(rendered, new RegExp(`  ${service}:\\n    userns_mode: "${PODMAN_USERNS_MODE}"\\n    user: "0:0"`));
   }
   assert.match(rendered, /spaceapp-cli-testuser-/, "per-user CLI containers get the same mapping");
+  assert.match(rendered, /spaceapp-cli-testuser[^:]*:\n    userns_mode: "keep-id:uid=10001,gid=10001"\n    user: "0:0"/, "per-user CLI containers start as container root so the entrypoint can gosu down");
   assert.ok(!/postgres:/.test(rendered), "postgres keeps Podman's default mapping");
   assert.ok(!/temporal:/.test(rendered), "temporal keeps Podman's default mapping");
 });
@@ -112,7 +113,7 @@ test("writeRuntimeFiles writes compose.podman.yml only for podman installs", asy
   await assert.rejects(() => readFile(join(root, "compose.podman.yml")), { code: "ENOENT" });
   await writeRuntimeFiles(root, { ...dockerConfig, engine: "podman" });
   const podmanFile = await readFile(join(root, "compose.podman.yml"), "utf8");
-  assert.match(podmanFile, /userns_mode: "keep-id:uid=10001,gid=10001"/);
+  assert.match(podmanFile, /userns_mode: "keep-id:uid=10001,gid=10001"\n    user: "0:0"/);
 });
 
 test("podman version parsing and provider facts", async () => {
@@ -202,6 +203,7 @@ test("install --engine podman persists the engine and writes the podman compose 
   assert.equal(config.engine, "podman");
   const podmanFile = await readFile(join(f.root, "compose.podman.yml"), "utf8");
   assert.match(podmanFile, /userns_mode: "keep-id:uid=10001,gid=10001"/);
+  assert.match(podmanFile, /user: "0:0"/);
   const upCall = f.calls.find((spec) => spec.command === "podman" && spec.args.includes("up"));
   assert.ok(upCall, "the runtime starts through podman compose");
   assert.ok(upCall.args.some((arg) => String(arg).endsWith("compose.podman.yml")));
