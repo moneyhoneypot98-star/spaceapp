@@ -21050,8 +21050,8 @@
     {
       "path": "apps/web/tests/smoke.test.tsx",
       "sourceObjectId": "6e746b1b5dfa15b5883c5490f78df5e41968ccfa",
-      "sha256": "d077b4e0e7ad9b3ac3e8a2c550f80cab631bc3c6298feac6eb38f20dae12a47d",
-      "size": 146570
+      "sha256": "1c089d170b08c874c4474d304dd8b9ad29df9b7d51e6e9cfc798ef2181d9048d",
+      "size": 146761
     },
     {
       "path": "apps/web/tests/snip-capture.test.ts",
