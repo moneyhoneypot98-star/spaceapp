@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "sourceCommit": "f8803d5d9658a3b6c1b2bdaaf6339db511391f2e",
   "fileCount": 4595,
-  "transformations": 368,
+  "transformations": 369,
   "files": [
     {
       "path": ".gitignore",
@@ -32,8 +32,8 @@
     {
       "path": "README.md",
       "sourceObjectId": "c488814fac84ac6dcf46db748cd410449cfdc6f9",
-      "sha256": "83d24f7f91c38ce3984096ce48ec554601e8a33be1f3d8338b4fa8189024409e",
-      "size": 24652
+      "sha256": "a063fd7f9247c432829d880edad6b0f372717ac37051ed1882a921b421852235",
+      "size": 24654
     },
     {
       "path": "agent-skills/job-applications/SKILL.md",
