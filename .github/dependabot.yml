@@ -4,16 +4,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0  # staging fork for upstream oll4com PRs: no Dependabot PRs here (provenance manifest cannot be regenerated publicly)
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0  # staging fork for upstream oll4com PRs: no Dependabot PRs here (provenance manifest cannot be regenerated publicly)
 
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0  # staging fork for upstream oll4com PRs: no Dependabot PRs here (provenance manifest cannot be regenerated publicly)
