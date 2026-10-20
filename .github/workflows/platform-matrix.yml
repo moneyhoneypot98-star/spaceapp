@@ -9,14 +9,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "packages/run-spaceapp/**"
+      - "package-lock.json"
+      - ".github/workflows/platform-matrix.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: platform-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   launcher:
@@ -35,6 +35,11 @@ jobs:
             node: "24"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    # Keyed per matrix leg so a queued macOS job is never cancelled while it waits for a
+    # runner (arm64 acquisition regularly takes 15+ minutes; the fast legs keep their cancel).
+    concurrency:
+      group: platform-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}-${{ matrix.node }}
+      cancel-in-progress: ${{ !startsWith(matrix.os, 'macos') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
