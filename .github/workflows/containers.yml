@@ -74,6 +74,7 @@ jobs:
 
       - name: Smoke check core (linux/${{ matrix.arch }})
         if: matrix.target == 'core'
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           docker network create spaceapp-core-smoke >/dev/null
@@ -83,6 +84,11 @@ jobs:
           docker run -d --name pg-smoke --network spaceapp-core-smoke \
             -e POSTGRES_DB=spaceapp -e POSTGRES_USER=spaceapp -e POSTGRES_PASSWORD=smoke-postgres-password \
             pgvector/pgvector:0.8.3-pg17-trixie@sha256:3a3147ccd9a0aee952bb69e1acea1eb3cc7183544185b87a662f872cfa47ae3b
+          for attempt in $(seq 1 60); do
+            if docker exec pg-smoke pg_isready -U spaceapp -d spaceapp; then break; fi
+            if [ "${attempt}" = "60" ]; then echo "core smoke: postgres never became healthy"; exit 1; fi
+            sleep 2
+          done
           docker run -d --name core-smoke --network spaceapp-core-smoke \
             -e SPACE_PUBLIC_DISTRIBUTION=true \
             -e SPACE_RUNTIME_STORE=postgres \
@@ -110,6 +116,7 @@ jobs:
 
       - name: Smoke check cli (linux/${{ matrix.arch }})
         if: matrix.target == 'cli'
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           docker run -d --name cli-smoke \
@@ -129,6 +136,7 @@ jobs:
 
       - name: Smoke check browser (linux/${{ matrix.arch }})
         if: matrix.target == 'browser'
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           docker network create spaceapp-browser-smoke >/dev/null
@@ -136,6 +144,18 @@ jobs:
           docker run -d --name pg-smoke --network spaceapp-browser-smoke \
             -e POSTGRES_DB=spaceapp -e POSTGRES_USER=spaceapp -e POSTGRES_PASSWORD=smoke-postgres-password \
             pgvector/pgvector:0.8.3-pg17-trixie@sha256:3a3147ccd9a0aee952bb69e1acea1eb3cc7183544185b87a662f872cfa47ae3b
+          for attempt in $(seq 1 60); do
+            if docker exec pg-smoke pg_isready -U spaceapp -d spaceapp; then break; fi
+            if [ "${attempt}" = "60" ]; then echo "browser smoke: postgres never became healthy"; exit 1; fi
+            sleep 2
+          done
+          # The browser image ships only what it runs, so migrations are not in it:
+          # apply the tracked migration SQL in the same transaction-per-migration
+          # way the migrate runner does (packages/db/dist/migration-runner.js).
+          for migration in packages/db/migrations/*.sql; do
+            { printf 'BEGIN;\n'; cat "${migration}"; printf '\nCOMMIT;\n'; } \
+              | docker exec -i pg-smoke psql -U spaceapp -d spaceapp -q -v ON_ERROR_STOP=1 > /dev/null
+          done
           docker run -d --name browser-smoke --network spaceapp-browser-smoke \
             -e SPACE_PUBLIC_DISTRIBUTION=true \
             -e SPACE_RUNTIME_STORE=postgres \
