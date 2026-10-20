@@ -79,8 +79,8 @@ jobs:
           set -euo pipefail
           docker network create spaceapp-core-smoke >/dev/null
           printf 'postgres://spaceapp:smoke-postgres-password@pg-smoke:5432/spaceapp' > /tmp/spaceapp-smoke-database-url
-          printf 'smoke-session-secret' > /tmp/spaceapp-smoke-session-secret
-          printf 'smoke-setup-token' > /tmp/spaceapp-smoke-setup-token
+          printf 'smoke-session-secret-0123456789abcdef0123456789' > /tmp/spaceapp-smoke-session-secret
+          printf 'smoke-setup-token-0123456789abcdef0123456789abcdef' > /tmp/spaceapp-smoke-setup-token
           docker run -d --name pg-smoke --network spaceapp-core-smoke \
             -e POSTGRES_DB=spaceapp -e POSTGRES_USER=spaceapp -e POSTGRES_PASSWORD=smoke-postgres-password \
             pgvector/pgvector:0.8.3-pg17-trixie@sha256:3a3147ccd9a0aee952bb69e1acea1eb3cc7183544185b87a662f872cfa47ae3b
