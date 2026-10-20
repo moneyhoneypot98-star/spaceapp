@@ -105,7 +105,7 @@ jobs:
           for attempt in $(seq 1 90); do
             if docker exec core-smoke node -e "fetch('http://127.0.0.1:4911/readyz').then(async r=>{const body=await r.json();process.exit(r.ok&&body.ok===true?0:1)}).catch(()=>process.exit(1))"; then
               echo "core smoke: /readyz answered ok:true on attempt ${attempt}"
-              docker logs core-smoke 2>&1 | grep -c "migrat" | xargs -I{} echo "core smoke: migration log lines: {}"
+              echo "core smoke: migrations applied: $(docker exec pg-smoke psql -U spaceapp -d spaceapp -Atc 'SELECT count(*) FROM space_schema_migrations')"
               exit 0
             fi
             sleep 2
