@@ -4,16 +4,20 @@ import { pathToFileURL } from "node:url";
 
 const mebibyte = 1024 * 1024;
 
-// 1.1.3 raised core and browser (998.7 / 1670.6 MiB measured): the current
-// application adds production dependencies pdfjs-dist with @napi-rs/canvas
-// (81 MiB, API PDF handling), typescript (23 MiB, peer of @t3-oss/env-core) and
-// js-tiktoken (22 MiB, Space Gateway token counting).
-// 1.1.5 raised core again: linux/arm64 measured 1066.9 MiB and linux/amd64 1045.0 MiB (sqlite3 in the image,
-// the 1.1.5 application); the first public release run failed the arm64 build at 1050 MiB.
+// Issue #64 (#64 per-service images) gave every image its own production
+// dependency closure via scripts/prune-container-targets.mjs, and the
+// runtime-base stage no longer copies the whole monorepo output into every
+// image. Foreign-platform native artifacts are dropped per TARGETARCH
+// (@temporalio/core-bridge releases, node-pty prebuilds, @napi-rs/canvas
+// platform packages). Measured with scripts/container-image-size-budget.mjs:
+//   core:    696.0 MiB linux/amd64 (was 1044.7), 850 MiB budget
+//   browser: 1186.8 MiB linux/amd64 (was 1719.9), 1350 MiB budget
+//   cli:      771.5 MiB linux/amd64 (was 1386.0), 1000 MiB budget
+// (linux/arm64 measurements are recorded by the Container matrix workflow.)
 export const containerImageSizeBudgets = Object.freeze({
-  core: 1100 * mebibyte,
-  browser: 1750 * mebibyte,
-  cli: 2800 * mebibyte
+  core: 850 * mebibyte,
+  browser: 1350 * mebibyte,
+  cli: 1000 * mebibyte
 });
 
 export function evaluateContainerImageSize({ target, sizeBytes }) {
