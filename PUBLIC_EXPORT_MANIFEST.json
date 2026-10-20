@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "sourceCommit": "f8803d5d9658a3b6c1b2bdaaf6339db511391f2e",
   "fileCount": 4595,
-  "transformations": 369,
+  "transformations": 370,
   "files": [
     {
       "path": ".gitignore",
@@ -13400,8 +13400,8 @@
     {
       "path": "apps/api/tests/room-watchdog.test.ts",
       "sourceObjectId": "0d6f02898ec06ad0ad08edc3483972f44b63901b",
-      "sha256": "6b47edd253d4d5410affcb7d5e19b31cf16b699b7150594713560b5e2a1e60fd",
-      "size": 15857
+      "sha256": "889c17fe0a596642dabad73a6d84393eb8a2d811698cea62bb4e001aa3543d9f",
+      "size": 16032
     },
     {
       "path": "apps/api/tests/room-work.test.ts",
