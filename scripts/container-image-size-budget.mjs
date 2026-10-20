@@ -4,20 +4,20 @@ import { pathToFileURL } from "node:url";
 
 const mebibyte = 1024 * 1024;
 
-// Issue #64 (#64 per-service images) gave every image its own production
+// Issue #64 (per-service images) gave every image its own production
 // dependency closure via scripts/prune-container-targets.mjs, and the
 // runtime-base stage no longer copies the whole monorepo output into every
 // image. Foreign-platform native artifacts are dropped per TARGETARCH
 // (@temporalio/core-bridge releases, node-pty prebuilds, @napi-rs/canvas
-// platform packages). Measured with scripts/container-image-size-budget.mjs:
-//   core:    696.0 MiB linux/amd64 (was 1044.7), 850 MiB budget
-//   browser: 1186.8 MiB linux/amd64 (was 1719.9), 1350 MiB budget
-//   cli:      771.5 MiB linux/amd64 (was 1386.0), 1000 MiB budget
-// (linux/arm64 measurements are recorded by the Container matrix workflow.)
+// platform packages). Measured with scripts/container-image-size-budget.mjs
+// in the Container matrix run on both architectures (2026-10-20):
+//   core:    702.2 MiB linux/amd64, 732.5 MiB linux/arm64 (was 1044.7 / 1066.9)
+//   browser: 1193.1 MiB linux/amd64, 1217.2 MiB linux/arm64 (was 1719.9 / 1735.0)
+//   cli:      770.4 MiB linux/amd64, 635.6 MiB linux/arm64 (was 1386.0 / 1237.1)
 export const containerImageSizeBudgets = Object.freeze({
-  core: 850 * mebibyte,
-  browser: 1350 * mebibyte,
-  cli: 1000 * mebibyte
+  core: 800 * mebibyte,
+  browser: 1280 * mebibyte,
+  cli: 850 * mebibyte
 });
 
 export function evaluateContainerImageSize({ target, sizeBytes }) {
