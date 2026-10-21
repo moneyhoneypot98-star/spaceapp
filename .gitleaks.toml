@@ -8,3 +8,30 @@ useDefault = true
 description = "Documentation placeholders, not credentials"
 regexTarget = "match"
 regexes = ['''^your_[a-z_]+>''']
+# Test fixtures, example keys and maintainer process notes, not credentials.
+# All hits originate in upstream oll4com commits (686788e = 1.1.5 prep,
+# 81b7da4/a43e799 = 1.1.6 prep, 2c7eb7e8, e5a2a1d) and are synthetic values
+# (fake keys in tests, artifact ids in quality docs, OAuth field names).
+# Listed per-path so nothing outside these exact files is suppressed.
+paths = [
+  '''^agent-skills/space-hyperframes/media-use/scripts/lib/telemetry\.mjs$''',
+  '''^apps/api/tests/codex-reset-credits\.test\.ts$''',
+  '''^apps/api/tests/cors-origin-guard\.test\.ts$''',
+  '''^apps/api/tests/google-autoclaim\.test\.ts$''',
+  '''^apps/api/tests/google-oauth-security\.test\.ts$''',
+  '''^apps/api/tests/request-correlation\.test\.ts$''',
+  '''^apps/web/tests/demo-setup\.test\.ts$''',
+  '''^apps/web/tests/demo-store\.test\.ts$''',
+  '''^apps/web/tests/owner-setup\.test\.tsx$''',
+  '''^apps/web/tests/space-gateway-dialog\.test\.tsx$''',
+  '''^apps/worker/tests/nous-turn\.test\.ts$''',
+  '''^docs/quality/pause-checkpoint-2026-10-03\.md$''',
+  '''^packages/contracts/tests/admin-operations\.test\.ts$''',
+  '''^packages/contracts/tests/toolbar-system-actions\.test\.ts$''',
+  '''^packages/db/tests/telegram-persistence\.test\.ts$''',
+  '''^packages/gateway/src/providers/claude/oauth\.ts$''',
+  '''^packages/gateway/tests/fixtures/headroom-parity/diff_compressor/0cf5e189bd42fab1\.json$''',
+  '''^packages/gateway/tests/fixtures/headroom-parity/diff_compressor/d4ed44a6fc667358\.json$''',
+  '''^packages/gateway/tests/fixtures/headroom-parity/diff_compressor/ea99ab1ea7449acf\.json$''',
+  '''^packages/gateway/tests/fixtures/headroom-parity/log_compressor/3bc015edc0a36387\.json$''',
+]
