@@ -58,11 +58,12 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       renderer = candidate;
       usingWebGL = true;
       uploadKey = "";
+      coordsKey = null;
       return true;
     };
     let frame = 0, width = 1, height = 1, dpr = 1;
     let hover: string | null = null;
-    let pickerDirty = true, uploadKey = "", focusKey: string | null = null;
+    let pickerDirty = true, uploadKey = "", focusKey: string | null = null, coordsKey: Float32Array | null = null;
     let extentKey: unknown = null, extentValue = 60;
     let orderedKey: unknown = null, orderedNodes: MemoryGraphNode[] = [];
     let fallbackKey = "", fallbackNodes: MemoryGraphNode[] = [], fallbackEdges: MemoryGraphEdge[] = [];
@@ -109,20 +110,26 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       const projected = new Map<string, { x: number; y: number; z: number; perspective: number }>();
       let labelNodes = orderedFor();
       if (usingWebGL && renderer) {
+        const coords = packedCoordinates?.coords ?? null;
         const key = `${orderedNodes.length}|${current.current.nodes.length}|${edges.length}|${positions.size}`;
         if (key !== uploadKey) {
           uploadKey = key;
-          const packedWidth = Math.max(1, Math.ceil(Math.sqrt(orderedNodes.length)));
-          renderer.upload(orderedNodes, edges, positions, packedCoordinates?.coords ?? new Float32Array(0), packedWidth, Math.max(1, Math.ceil(orderedNodes.length / packedWidth)));
+          renderer.upload(orderedNodes, edges, positions);
           focusKey = null;
+          pickerDirty = true;
+        }
+        // Streamed layout coordinates replace the texture between geometry uploads.
+        if (coords && coords !== coordsKey) {
+          const packedWidth = Math.max(1, Math.ceil(Math.sqrt(orderedNodes.length)));
+          renderer.positions(coords, packedWidth, Math.max(1, Math.ceil(orderedNodes.length / packedWidth)));
+          coordsKey = coords;
           pickerDirty = true;
         }
         if (focus !== focusKey) { focusKey = focus; renderer.updateFocus(focus); }
         renderer.render(cameraRef.current, width, height, dpr, scale, spread, focus);
       } else {
         const drawn = fallbackFor();
-        labelNodes = drawn.nodes;
-        for (const node of drawn.nodes) {
+        labelNodes = drawn.nodes;        for (const node of drawn.nodes) {
           const p = coordinates.get(node.id);
           if (p) projected.set(node.id, projectMemoryPoint(p, cameraRef.current, scale, width, height));
         }
@@ -150,10 +157,7 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
         }
         context.globalAlpha = 1;
       }
-      if (pickerDirty) {
-        picker.update(labelNodes, coordinates, cameraRef.current, scale, width, height);
-        pickerDirty = false;
-      }
+      // The picker index is rebuilt lazily on the next hover/click (hoverAt), not per camera frame.
       if (showTitles) {
         const labeled = [...labelNodes].sort((a, b) => Number(b.id === focus) - Number(a.id === focus) || Number(isMemoryCoreLabel(b.label)) - Number(isMemoryCoreLabel(a.label)) || Number(b.type === "SOURCE") - Number(a.type === "SOURCE"));
         context.font = "11px system-ui, sans-serif";

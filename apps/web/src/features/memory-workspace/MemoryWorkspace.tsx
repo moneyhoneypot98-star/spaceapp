@@ -3,6 +3,7 @@ import { AlertTriangle, Calendar as CalendarIcon, ClipboardCheck, Network, Searc
 import type { MemoryGraphNodeDetail } from "@space/contracts";
 import { api, type MemoryGraphOverviewResponse } from "../../api.js";
 import { getSpaceRuntimeKind } from "../../runtime/SpaceRuntime.js";
+import { cappedFallbackGraph } from "./MemoryGraph3D.js";
 import { MemoryGraphErrorBoundary } from "./MemoryGraphErrorBoundary.js";
 import { MemoryNodeDetail } from "./MemoryNodeDetail.js";
 import { createMemoryAtlas, type MemoryAtlasPosition } from "./memory-atlas.js";
@@ -99,6 +100,9 @@ export function MemoryWorkspace({ shellMode, onClose, initialMode = "calendar" }
   }, []);
 
   const atlas = useMemo(() => createMemoryAtlas(graph?.data.nodes ?? [], graph?.data.edges ?? [], false), [graph]);
+  // The 2D map keeps today's overview size: it never saw more than 2,000 nodes before the
+  // full-graph limit existed, and its batched reveal would monopolize the main thread otherwise.
+  const cappedAtlas = useMemo(() => cappedFallbackGraph(atlas.nodes, atlas.edges, selectedNodeId), [atlas, selectedNodeId]);
   const [layout, setLayout] = useState<{ atlas: typeof atlas; positions: Map<string, MemoryAtlasPosition>; depth: Map<string, MemoryPoint3D>; packed: { ids: string[]; coords: Float32Array } | null } | null>(null);
   const [streamLayout, setStreamLayout] = useState<{ atlas: typeof atlas; depth: Map<string, MemoryPoint3D>; packed: { ids: string[]; coords: Float32Array } } | null>(null);
   useEffect(() => {
@@ -216,7 +220,7 @@ export function MemoryWorkspace({ shellMode, onClose, initialMode = "calendar" }
             <div className="memory-graph-layout" data-detail-open={Boolean(selectedNodeId)} data-graph-mode="ATLAS" data-source-count={atlas.nodes.filter(node => node.type === "SOURCE").length} data-source-link-count={atlas.edges.filter(edge => edge.type === "CONTAINS" || edge.type === "DERIVED_FROM").length} data-root-visible={atlas.nodes.some(node => node.type === "SOURCE" && isMemoryCoreLabel(node.label))} data-raw-node-count={graph?.data.nodes.length ?? 0} data-visible-node-count={atlas.nodes.length} data-visible-edge-count={atlas.edges.length}>
               <div className="memory-atlas-2d" hidden={view3D}><MemoryGraphErrorBoundary>
                 <Suspense fallback={<div className="memory-graph-loading" role="status">Connecting your memories…</div>}>
-                  <DesktopMemoryGraph nodes={atlas.nodes} edges={atlas.edges} displayMode="SEMANTIC" relationMode="RELATIONS" selectedNodeId={selectedNodeId} onSelectNode={selectNode} loading={loading || layoutPending} error={error} totalNodes={graph?.data.totalMatchingNodes ?? 0} totalEdges={graph?.data.totalMatchingEdges ?? 0} truncated={graph?.data.truncated ?? false} atlasPositions={atlasPositions} showTitles={showTitles} />
+                  <DesktopMemoryGraph nodes={cappedAtlas.nodes} edges={cappedAtlas.edges} displayMode="SEMANTIC" relationMode="RELATIONS" selectedNodeId={selectedNodeId} onSelectNode={selectNode} loading={loading || layoutPending} error={error} totalNodes={graph?.data.totalMatchingNodes ?? 0} totalEdges={graph?.data.totalMatchingEdges ?? 0} truncated={graph?.data.truncated ?? false} atlasPositions={atlasPositions} showTitles={showTitles} />
                 </Suspense>
               </MemoryGraphErrorBoundary></div>
               {view3D ? <MemoryGraph3D nodes={atlas.nodes} edges={atlas.edges} positions={atlasPositions} coordinates={coordinates} packedCoordinates={packedCoordinates} showTitles={showTitles} selectedNodeId={selectedNodeId} onSelectNode={selectNode} loading={loading || layoutPending} resetToken={reset3D} /> : null}

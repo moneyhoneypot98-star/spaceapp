@@ -96,7 +96,7 @@ void main() {
   float clipStart, clipEnd;
   vec2 screenStart = memoryScreen(start, clipStart);
   vec2 screenEnd = memoryScreen(end, clipEnd);
-  float blend = a_corner.x;
+  float blend = a_corner.x * 0.5 + 0.5;
   vec2 device = mix(screenStart, screenEnd, blend);
   gl_Position = vec4(device.x / u_resolution.x * 2.0 - 1.0, 1.0 - device.y / u_resolution.y * 2.0, mix(clipStart, clipEnd, blend), 1.0);
   v_color = a_incident > 0.5 ? vec3(0.596, 0.855, 0.98)
@@ -121,8 +121,10 @@ const parseColor = (color: string): [number, number, number] => {
 };
 
 export type Memory3DWebGLRenderer = {
-  /** Uploads the static geometry: node order, colors, edge endpoints, focus adjacency, and the packed position texture. */
-  upload(nodes: MemoryGraphNode[], edges: MemoryGraphEdge[], positions: Map<string, MemoryAtlasPosition>, packed: Float32Array, posWidth: number, posHeight: number): void;
+  /** Uploads the static geometry: node order, colors, edge endpoints, focus adjacency. */
+  upload(nodes: MemoryGraphNode[], edges: MemoryGraphEdge[], positions: Map<string, MemoryAtlasPosition>): void;
+  /** Uploads the packed position texture; called again whenever streamed layout coordinates change. */
+  positions(packed: Float32Array, posWidth: number, posHeight: number): void;
   /** Recomputes focus/neighbor dimming and incident edge flags; O(nodes + edges), only on focus change. */
   updateFocus(focus: string | null): void;
   /** Uniform-only frame: no per-frame CPU projection or depth sort. */
@@ -189,7 +191,7 @@ export function createMemory3DWebGLRenderer(canvas: HTMLCanvasElement, gl: WebGL
         gl.disableVertexAttribArray(3);
       }
     };
-    const upload: Memory3DWebGLRenderer["upload"] = (nodes, edges, positions, packed, width, height) => {
+    const upload: Memory3DWebGLRenderer["upload"] = (nodes, edges, positions) => {
       indexById = new Map(nodes.map((node, index) => [node.id, index]));
       orderedEdges = edges.filter(edge => indexById.has(edge.source) && indexById.has(edge.target));
       adjacency = new Map();
@@ -202,7 +204,6 @@ export function createMemory3DWebGLRenderer(canvas: HTMLCanvasElement, gl: WebGL
       }
       nodeCount = nodes.length;
       edgeCount = orderedEdges.length;
-      posWidth = width; posHeight = height;
       const instances = new Float32Array(nodeCount * 4);
       for (let index = 0; index < nodeCount; index++) {
         const node = nodes[index]!;
@@ -225,6 +226,9 @@ export function createMemory3DWebGLRenderer(canvas: HTMLCanvasElement, gl: WebGL
       gl.bufferData(gl.ARRAY_BUFFER, edgeData, gl.STATIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, edgeIncidents);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgeCount), gl.DYNAMIC_DRAW);
+    };
+    const positions: Memory3DWebGLRenderer["positions"] = (packed, width, height) => {
+      posWidth = width; posHeight = height;
       gl.bindTexture(gl.TEXTURE_2D, positionsTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, posWidth, posHeight, 0, gl.RGBA, gl.FLOAT, packed);
     };
@@ -288,7 +292,7 @@ export function createMemory3DWebGLRenderer(canvas: HTMLCanvasElement, gl: WebGL
       gl.depthMask(false);
     };
     return {
-      upload, updateFocus, render,
+      upload, positions, updateFocus, render,
       destroy: () => {
         gl.deleteProgram(nodeProgram); gl.deleteProgram(edgeProgram);
         gl.deleteBuffer(quadBuffer); gl.deleteBuffer(nodeInstances); gl.deleteBuffer(nodeStates);
