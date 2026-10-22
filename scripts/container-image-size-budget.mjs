@@ -9,11 +9,13 @@ const mebibyte = 1024 * 1024;
 // runtime-base stage no longer copies the whole monorepo output into every
 // image. Foreign-platform native artifacts are dropped per TARGETARCH
 // (@temporalio/core-bridge releases, node-pty prebuilds, @napi-rs/canvas
-// platform packages). Measured with scripts/container-image-size-budget.mjs
-// in the Container matrix run on both architectures (2026-10-20):
-//   core:    702.2 MiB linux/amd64, 732.5 MiB linux/arm64 (was 1044.7 / 1066.9)
-//   browser: 1193.1 MiB linux/amd64, 1217.2 MiB linux/arm64 (was 1719.9 / 1735.0)
-//   cli:      770.4 MiB linux/amd64, 635.6 MiB linux/arm64 (was 1386.0 / 1237.1)
+// platform packages). The cli stage also drops the unused @opencode/cli
+// platform binaries in its install layer. Measured with
+// scripts/container-image-size-budget.mjs in the Container matrix run on both
+// architectures (2026-10-22, 1.1.7; was = upstream main 1.1.7):
+//   core:    702.9 MiB linux/amd64, 733.2 MiB linux/arm64 (was 1057.6 / 1079.8)
+//   browser: 1193.6 MiB linux/amd64, 1217.7 MiB linux/arm64 (was 1732.8 / 1747.9)
+//   cli:      637.3 MiB linux/amd64, 669.0 MiB linux/arm64 (was 1889.3 / 1496.9)
 export const containerImageSizeBudgets = Object.freeze({
   core: 800 * mebibyte,
   browser: 1280 * mebibyte,
