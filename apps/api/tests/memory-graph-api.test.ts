@@ -451,6 +451,15 @@ describe("Memory graph API", () => {
     expect(capped.json().data.nodes).toHaveLength(5);
   });
 
+  it("keeps the overview route closed to USER accounts (admin-only)", async () => {
+    const app = await memoryGraphApp(true, new InMemorySpaceStore());
+    const userCookie = `space_session=${signSession({ id: "user:member", email: "member@space.test", role: "USER" }, sessionSecret)}`;
+    const refused = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview", headers: { cookie: userCookie } });
+    // A USER never reaches /api/admin (deny by default, security review MU-001); only ADMIN and OPERATOR do.
+    expect(refused.statusCode).toBe(404);
+    await app.close();
+  });
+
   it("loads beyond the default cap with an explicit bounded limit and keeps redaction", async () => {
     const graphSnapshot = snapshot() as MemoryGraphSnapshot;
     graphSnapshot.nodes = Array.from({ length: 2600 }, (_, index) => ({
