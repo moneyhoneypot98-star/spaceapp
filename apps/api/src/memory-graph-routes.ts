@@ -313,8 +313,9 @@ function memoryIssuesRevisionHash(snapshotRevision: string, states: MemoryIssueS
 }
 
 // Keep the same payload budget while retaining the taxonomy needed to interpret a large archive.
-export function selectOverviewNodes(nodes: MemoryGraphNode[], edges: MemoryGraphEdge[]): MemoryGraphNode[] {
-  if (nodes.length <= 2000) return nodes;
+// The default cap is unchanged; an explicit limit (bounded server-side) may load the full graph.
+export function selectOverviewNodes(nodes: MemoryGraphNode[], edges: MemoryGraphEdge[], limit = 2000): MemoryGraphNode[] {
+  if (nodes.length <= limit) return nodes;
   const members = new Map<string, Set<string>>();
   const explicit = new Set<string>();
   const byId = new Map(nodes.map(node => [node.id, node]));
@@ -336,7 +337,7 @@ export function selectOverviewNodes(nodes: MemoryGraphNode[], edges: MemoryGraph
     if (first) selected.set(first, byId.get(first)!);
   }
   for (const node of nodes) {
-    if (selected.size >= 2000) break;
+    if (selected.size >= limit) break;
     selected.set(node.id, node);
   }
   return [...selected.values()];
@@ -356,12 +357,14 @@ export function registerMemoryGraphRoutes(
   app.get("/api/admin/memory/graph/overview", async (request, reply) => {
     requireMemoryGraph(options.config);
     const query = listMemoryGraphOverviewQuerySchema.parse(request.query);
+    const overviewLimit = query.limit ?? 2000;
     const snapshotData = query.month
       ? await (options.service.getArchiveSnapshotState?.() ?? options.service.getArchiveSnapshot().then(snapshot => ({ snapshot, isStale: false })))
       : await options.service.getSnapshot();
     const { isStale } = snapshotData;
     const snapshot = await options.service.withSourceTopology?.(snapshotData.snapshot) ?? snapshotData.snapshot;
-    if (setSnapshotEtag(request, reply, snapshot.revisionHash ?? snapshot.sourceHash)) return reply.code(304).send();
+    const overviewEtag = snapshot.revisionHash ?? snapshot.sourceHash;
+    if (setSnapshotEtag(request, reply, overviewLimit === 2000 ? overviewEtag : createHash("sha256").update(`${overviewEtag}:limit=${overviewLimit}`).digest("hex"))) return reply.code(304).send();
     const availableMonths = await options.service.listAvailableMonths();
 
     const anchors = filterNodes(snapshot, query).sort((left, right) => left.id.localeCompare(right.id));
@@ -385,12 +388,12 @@ export function registerMemoryGraphRoutes(
       matchingNodeIds.has(edge.target) &&
       (query.relationMode !== "RELATIONS" || anchorIds.has(edge.source) || anchorIds.has(edge.target))
     );
-    const selectedNodes = selectOverviewNodes(matchingNodes, matchingEdges);
+    const selectedNodes = selectOverviewNodes(matchingNodes, matchingEdges, overviewLimit);
     const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
     const selectedEdges = matchingEdges
       .filter((edge) => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target))
       .sort((a, b) => Number(b.type === "CONTAINS" || b.type === "DERIVED_FROM") - Number(a.type === "CONTAINS" || a.type === "DERIVED_FROM"))
-      .slice(0, 6000);
+      .slice(0, Math.min(overviewLimit * 3, 150000));
     const data = memoryGraphOverviewPayloadSchema.parse({
       version: snapshot.version,
       layoutVersion: snapshot.layoutVersion,

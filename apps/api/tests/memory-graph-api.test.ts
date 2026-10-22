@@ -434,6 +434,50 @@ describe("Memory graph API", () => {
     await app.close();
   });
 
+  it("loads beyond the default cap with an explicit bounded limit and keeps redaction", async () => {
+    const graphSnapshot = snapshot() as MemoryGraphSnapshot;
+    graphSnapshot.nodes = Array.from({ length: 2600 }, (_, index) => ({
+      id: `memory:${String(index).padStart(4, "0")}`,
+      type: "MEMORY" as const,
+      label: index === 0 ? "Agent Memory token=raw-test-value" : `Memory ${index}`,
+      sourcePath: null,
+      recordId: null
+    }));
+    graphSnapshot.nodes.push({ id: "source:root", type: "SOURCE", label: "gemini.md", sourcePath: "/opt/spaceapp/docs/gemini.md", recordId: null });
+    graphSnapshot.edges = Array.from({ length: 2600 }, (_, index) => ({
+      id: `edge:${String(index).padStart(4, "0")}`,
+      source: "source:root",
+      target: `memory:${String(index).padStart(4, "0")}`,
+      type: "CONTAINS" as const
+    }));
+    const app = await memoryGraphApp(true, new InMemorySpaceStore(), false, undefined, { graphSnapshot });
+    const full = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview?limit=2601", headers: { cookie } });
+    expect(full.statusCode).toBe(200);
+    const fullData = full.json().data;
+    expect(fullData.nodes).toHaveLength(2601);
+    expect(fullData.edges).toHaveLength(2600);
+    expect(fullData.truncated).toBe(false);
+    expect(fullData.totalMatchingNodes).toBe(2601);
+    expect(fullData.nodes).toContainEqual(expect.objectContaining({ id: "memory:0000", label: "Agent Memory token:[REDACTED]" }));    expect(full.headers.etag).not.toBe(`"${"a".repeat(64)}"`);
+    const replay = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview?limit=2601", headers: { cookie, "if-none-match": full.headers.etag } });
+    expect(replay.statusCode).toBe(304);
+    const staleReplay = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview?limit=2601", headers: { cookie, "if-none-match": `"${"a".repeat(64)}"` } });
+    expect(staleReplay.statusCode).toBe(200);
+    expect(staleReplay.json().data.nodes).toHaveLength(2601);
+    const capped = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview?limit=2600", headers: { cookie } });
+    expect(capped.statusCode).toBe(200);
+    expect(capped.json().data.truncated).toBe(true);
+    expect(capped.json().data.nodes).toHaveLength(2600);
+    for (const invalid of ["limit=50001", "limit=0", "limit=abc"]) {
+      const rejected = await app.inject({ method: "GET", url: `/api/admin/memory/graph/overview?${invalid}`, headers: { cookie } });
+      expect(rejected.statusCode).toBe(422);
+    }
+    const page = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview", headers: { cookie } });
+    expect(page.json().data.nodes).toHaveLength(2000);
+    expect(page.headers.etag).toBe(`"${"a".repeat(64)}"`);
+    await app.close();
+  });
+
   it("serves the all-months archive and single-month filtering through the month query param", async () => {
     const graphSnapshot = snapshot() as MemoryGraphSnapshot;
     const archiveSnapshot = snapshot() as MemoryGraphSnapshot;
