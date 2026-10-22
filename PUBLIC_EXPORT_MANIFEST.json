@@ -10394,8 +10394,8 @@
     {
       "path": "apps/api/src/memory-graph-routes.ts",
       "sourceObjectId": "396e533dac265ca550730f1b168f8d5b0b1b8d52",
-      "sha256": "cb12080596d2ffd8003a5f428e09c003c505c7f933bb9a03e1714c59ab99bb14",
-      "size": 46898
+      "sha256": "9a7ab367a0d044f03729513745b7b51d41a369a79d1200fd3e9578ed21a0f592",
+      "size": 47443
     },
     {
       "path": "apps/api/src/memory-graph-service.ts",
@@ -13100,8 +13100,8 @@
     {
       "path": "apps/api/tests/memory-graph-api.test.ts",
       "sourceObjectId": "1b9d8dc0ffb99b36b0c5da49691731dd7dac321b",
-      "sha256": "9c2e9b100c355999acb73d4ca305eaabf0a45c043bf20d1e12f34fd144e93a22",
-      "size": 58770
+      "sha256": "46a9d251070c7013a74c4ec0f9c6ad9c1519c2d52fa3970d2cd8e0e16fa394c9",
+      "size": 62473
     },
     {
       "path": "apps/api/tests/memory-graph-service-lifecycle.test.ts",

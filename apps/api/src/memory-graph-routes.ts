@@ -340,7 +340,9 @@ export function selectOverviewNodes(nodes: MemoryGraphNode[], edges: MemoryGraph
     if (selected.size >= limit) break;
     selected.set(node.id, node);
   }
-  return [...selected.values()];
+  // The reserved pass (sources, topics, topic neighbours) can already exceed a small
+  // limit; the cap is what was requested, so trim while keeping the selection order.
+  return [...selected.values()].slice(0, limit);
 }
 
 export function registerMemoryGraphRoutes(

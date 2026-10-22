@@ -434,6 +434,23 @@ describe("Memory graph API", () => {
     await app.close();
   });
 
+  it("caps a small limit even when reserved nodes exceed it", async () => {
+    const graphSnapshot = snapshot() as MemoryGraphSnapshot;
+    graphSnapshot.nodes = Array.from({ length: 12 }, (_, index) => ({
+      id: `source:many-${index}`,
+      type: "SOURCE" as const,
+      label: index === 0 ? "gemini.md" : `Source ${index}`,
+      sourcePath: `/opt/spaceapp/docs/source-${index}.md`,
+      recordId: null
+    }));
+    graphSnapshot.edges = [];
+    const app = await memoryGraphApp(true, new InMemorySpaceStore(), false, undefined, { graphSnapshot });
+    const capped = await app.inject({ method: "GET", url: "/api/admin/memory/graph/overview?limit=5", headers: { cookie } });
+    expect(capped.statusCode).toBe(200);
+    // Reserved sources alone would be 12; the requested limit is what is served.
+    expect(capped.json().data.nodes).toHaveLength(5);
+  });
+
   it("loads beyond the default cap with an explicit bounded limit and keeps redaction", async () => {
     const graphSnapshot = snapshot() as MemoryGraphSnapshot;
     graphSnapshot.nodes = Array.from({ length: 2600 }, (_, index) => ({
