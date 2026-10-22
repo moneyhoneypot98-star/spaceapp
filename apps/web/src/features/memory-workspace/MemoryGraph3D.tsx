@@ -170,7 +170,9 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
           context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
         }
         const neighbors = new Set<string>();
-        if (focus) for (const edge of edges) { if (edge.source === focus) neighbors.add(edge.target); if (edge.target === focus) neighbors.add(edge.source); }
+        // Bounded by the capped edges, not the full array: on the large-graph fallback
+        // path every pointer-driven redraw stays within what is actually drawn.
+        if (focus) for (const edge of drawn.edges) { if (edge.source === focus) neighbors.add(edge.target); if (edge.target === focus) neighbors.add(edge.source); }
         const ordered = drawn.nodes.filter(node => projected.has(node.id)).sort((a, b) => projected.get(b.id)!.z - projected.get(a.id)!.z);
         for (const node of ordered) {
           const p = projected.get(node.id)!;
@@ -255,7 +257,7 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
         cameraRef.current.pitch += event.key === "ArrowUp" ? -0.15 : event.key === "ArrowDown" ? 0.15 : 0; invalidate();
       } else if (event.key === "Enter") { const node = current.current.nodes.find(node => node.id === current.current.selectedNodeId) ?? current.current.nodes.find(node => isMemoryCoreLabel(node.label)); if (node) current.current.onSelectNode(node.id); }
     };
-    const lost = (event: Event) => { event.preventDefault(); usingWebGL = false; canvas.dataset.renderer = "canvas2d"; schedule(); };
+    const lost = (event: Event) => { event.preventDefault(); usingWebGL = false; pickerDirty = true; canvas.dataset.renderer = "canvas2d"; schedule(); };
     const restored = () => { if (attachWebGL()) { canvas.dataset.renderer = "webgl2"; schedule(); } };
     attachWebGL();
     canvas.dataset.renderer = usingWebGL ? "webgl2" : "canvas2d";
