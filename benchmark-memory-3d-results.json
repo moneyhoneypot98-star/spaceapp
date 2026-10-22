@@ -190,5 +190,85 @@
     "pickP95": 0.1,
     "pickMax": 4.3,
     "pickSamples": 75
+  },
+  {
+    "host": "ares",
+    "gpu": "NVIDIA GeForce RTX 3090 (driver 595.99.02)",
+    "chrome": "Google Chrome for Testing 156.0.8078.47 (/home/ares/cfm/chrome-linux64/chrome)",
+    "chromeFlags": "--headless=new --no-sandbox --disable-dev-shm-usage --password-store=basic --use-angle=vulkan --enable-features=Vulkan --ignore-gpu-blocklist",
+    "server": "vite preview (production build) 127.0.0.1:4961",
+    "tree": "wt256 HEAD 3d06307",
+    "date": "2026-10-22",
+    "durationMs": 8000,
+    "nodes": 2000,
+    "renderer": "webgl2",
+    "unmaskedRenderer": "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA NVIDIA GeForce RTX 3090 (0x00002204)), NVIDIA)",
+    "webgl2": true,
+    "visibleNodes": 2000,
+    "visibleEdges": 5891,
+    "rotation": "-71.850,-72.300",
+    "layoutVolume": "0.9805",
+    "rotate": {
+      "samples": 480,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8
+    },
+    "zoom": {
+      "samples": 479,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8
+    },
+    "overall": {
+      "samples": 1110,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8
+    },
+    "longTasksOver100ms": [],
+    "pickP95": 0.1,
+    "pickMax": 1.2,
+    "pickSamples": 76
+  },
+  {
+    "host": "ares",
+    "gpu": "NVIDIA GeForce RTX 3090 (driver 595.99.02)",
+    "chrome": "Google Chrome for Testing 156.0.8078.47 (/home/ares/cfm/chrome-linux64/chrome)",
+    "chromeFlags": "--headless=new --no-sandbox --disable-dev-shm-usage --password-store=basic --use-angle=vulkan --enable-features=Vulkan --ignore-gpu-blocklist",
+    "server": "vite preview (production build) 127.0.0.1:4961",
+    "tree": "wt256 HEAD 3d06307",
+    "date": "2026-10-22",
+    "durationMs": 8000,
+    "nodes": 50000,
+    "renderer": "webgl2",
+    "unmaskedRenderer": "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA NVIDIA GeForce RTX 3090 (0x00002204)), NVIDIA)",
+    "webgl2": true,
+    "visibleNodes": 50000,
+    "visibleEdges": 148451,
+    "rotation": "-71.850,-72.300",
+    "layoutVolume": "0.8780",
+    "rotate": {
+      "samples": 480,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8
+    },
+    "zoom": {
+      "samples": 479,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8
+    },
+    "overall": {
+      "samples": 1110,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8
+    },
+    "longTasksOver100ms": [],
+    "pickP95": 0.4,
+    "pickMax": 12,
+    "pickSamples": 75
   }
 ]
