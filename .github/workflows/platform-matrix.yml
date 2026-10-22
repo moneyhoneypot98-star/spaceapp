@@ -9,14 +9,14 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "packages/run-spaceapp/**"
-      - "package-lock.json"
-      - ".github/workflows/platform-matrix.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: platform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   launcher:
@@ -27,13 +27,7 @@ jobs:
         include:
           - os: ubuntu-latest
             node: "22.23.0"
-          # TEMPORARY, restore after 2026-10-23: GitHub's arm64 pool (macos-latest = macOS 26
-          # arm64) is in a scheduled capacity brownout (Oct 19-20, 23); acquisition dies at
-          # ~15 min with zero steps run, and infra failures bypass continue-on-error.
-          # - os: macos-latest
-          #   node: "22.23.0"
-          # x64 leg keeps macOS coverage meanwhile:
-          - os: macos-15-intel
+          - os: macos-latest
             node: "22.23.0"
           - os: windows-latest
             node: "22.23.0"
@@ -41,15 +35,6 @@ jobs:
             node: "24"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    # TEMPORARY until 2026-10-23: GitHub's macOS arm64 pool is in a scheduled capacity
-    # brownout (Oct 19-20, 23) and every acquisition dies at ~15 min with zero steps run.
-    # arm64 coverage still runs via the macos-15-intel leg; remove this when the pool recovers.
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
-    # Keyed per matrix leg so a queued macOS job is never cancelled while it waits for a
-    # runner (arm64 acquisition regularly takes 15+ minutes; the fast legs keep their cancel).
-    concurrency:
-      group: platform-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}-${{ matrix.node }}
-      cancel-in-progress: ${{ !startsWith(matrix.os, 'macos') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
