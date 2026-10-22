@@ -256,9 +256,22 @@ export type Memory3DLabelInput = {
 export function selectMemory3DLabels(input: Memory3DLabelInput): Array<{ id: string; label: string; x: number; y: number; w: number }> {
   const maxMeasured = input.maxMeasured ?? MAX_MEMORY_3D_LABELS_MEASURED;
   const maxDrawn = input.maxDrawn ?? MAX_MEMORY_3D_LABELS_DRAWN;
-  const candidates = input.nodes
-    .filter(node => node.type === "SOURCE" || node.id === input.focus || input.zoom >= 1.6)
-    .sort((a, b) => Number(b.id === input.focus) - Number(a.id === input.focus) || Number(isMemoryCoreLabel(b.label)) - Number(isMemoryCoreLabel(a.label)) || Number(b.type === "SOURCE") - Number(a.type === "SOURCE") || a.id.localeCompare(b.id));
+  // Priority buckets instead of a per-frame sort — the exact comparator classes:
+  // focus, then core labels (sources among core first), then the remaining sources,
+  // with each group keeping its input order. At 50k nodes a full sort with the
+  // localeCompare id tiebreak ran every frame once zoom >= 1.6, while the layout
+  // order is already deterministic, so the buckets are enough.
+  const focusNodes: Memory3DLabelInput["nodes"] = [], coreSourceNodes: Memory3DLabelInput["nodes"] = [], coreNodes: Memory3DLabelInput["nodes"] = [], sourceNodes: Memory3DLabelInput["nodes"] = [], restNodes: Memory3DLabelInput["nodes"] = [];
+  for (const node of input.nodes) {
+    if (node.type !== "SOURCE" && node.id !== input.focus && input.zoom < 1.6) continue;
+    if (node.id === input.focus) focusNodes.push(node);
+    else if (isMemoryCoreLabel(node.label)) {
+      if (node.type === "SOURCE") coreSourceNodes.push(node); else coreNodes.push(node);
+    }
+    else if (node.type === "SOURCE") sourceNodes.push(node);
+    else restNodes.push(node);
+  }
+  const candidates = [...focusNodes, ...coreSourceNodes, ...coreNodes, ...sourceNodes, ...restNodes];
   const boxes: Array<{ x: number; y: number; w: number }> = [];
   const drawn: Array<{ id: string; label: string; x: number; y: number; w: number }> = [];
   let measured = 0;

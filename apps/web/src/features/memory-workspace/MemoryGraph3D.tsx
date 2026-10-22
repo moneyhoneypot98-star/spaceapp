@@ -57,15 +57,22 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       renderer?.destroy();
       renderer = candidate;
       usingWebGL = true;
-      uploadKey = "";
+      uploadNodes = uploadEdges = uploadPositions = null;
       coordsKey = null;
       return true;
     };
     let frame = 0, width = 1, height = 1, dpr = 1;
     let hover: string | null = null;
-    let pickerDirty = true, uploadKey = "", focusKey: string | null = null, coordsKey: Float32Array | null = null;
+    // Geometry uploads are keyed on object identity, not counts: the same node/edge/position
+    // counts can hide a re-ordered node list or a graph swap, which would misalign the
+    // edge texel indices against the position texture.
+    let pickerDirty = true, uploadNodes: MemoryGraphNode[] | null = null, uploadEdges: MemoryGraphEdge[] | null = null, uploadPositions: Map<string, MemoryAtlasPosition> | null = null;
+    let focusKey: string | null = null, coordsKey: Float32Array | null = null, coordsSource: Map<string, MemoryPoint3D> | null = null;
     let extentKey: unknown = null, extentValue = 60;
-    let orderedKey: unknown = null, orderedNodes: MemoryGraphNode[] = [];
+    // orderedNodes is keyed on both identities: caching on the packed object alone would
+    // never seed a mount that starts with packedCoordinates = null (FeatureShowcase),
+    // leaving the WebGL path with an empty node list.
+    let orderedSrc: MemoryGraphNode[] | null = null, orderedPacked: { ids: string[]; coords: Float32Array } | null = null, orderedNodes: MemoryGraphNode[] = [];
     let fallbackKey = "", fallbackNodes: MemoryGraphNode[] = [], fallbackEdges: MemoryGraphEdge[] = [];
     const picker = createMemory3DPicker();
     const pointers = new Map<number, { x: number; y: number }>();
@@ -79,11 +86,15 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       return extentValue;
     };
     const orderedFor = () => {
-      const packed = current.current.packedCoordinates;
-      if (packed !== orderedKey) {
-        orderedKey = packed;
-        const byId = new Map(current.current.nodes.map(node => [node.id, node]));
-        orderedNodes = packed ? packed.ids.map(id => byId.get(id)).filter(node => node !== undefined) : current.current.nodes;
+      const { nodes: src, packedCoordinates: packed } = current.current;
+      if (orderedSrc !== src || orderedPacked !== packed) {
+        orderedSrc = src; orderedPacked = packed;
+        if (packed) {
+          const byId = new Map(src.map(node => [node.id, node]));
+          orderedNodes = packed.ids.map(id => byId.get(id)).filter(node => node !== undefined);
+        } else {
+          orderedNodes = src;
+        }
       }
       return orderedNodes;
     };
@@ -110,15 +121,24 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       const projected = new Map<string, { x: number; y: number; z: number; perspective: number }>();
       let labelNodes = orderedFor();
       if (usingWebGL && renderer) {
-        const coords = packedCoordinates?.coords ?? null;
-        const key = `${orderedNodes.length}|${current.current.nodes.length}|${edges.length}|${positions.size}`;
-        if (key !== uploadKey) {
-          uploadKey = key;
+        if (uploadNodes !== orderedNodes || uploadEdges !== edges || uploadPositions !== positions) {
+          uploadNodes = orderedNodes; uploadEdges = edges; uploadPositions = positions;
           renderer.upload(orderedNodes, edges, positions);
+          coordsSource = null;
           focusKey = null;
           pickerDirty = true;
         }
-        // Streamed layout coordinates replace the texture between geometry uploads.
+        // Streamed layout coordinates replace the texture between geometry uploads. The
+        // packed buffer is only aligned with the geometry when every packed id is present
+        // in nodes; otherwise the texel order would shift, so derive the texel data in
+        // orderedNodes order from the coordinates map instead, keyed on its identity.
+        let coords = packedCoordinates && orderedNodes.length === packedCoordinates.ids.length ? packedCoordinates.coords : null;
+        if (coords) { coordsSource = null; }
+        else if (coordsSource !== coordinates) {
+          coordsSource = coordinates;
+          coords = new Float32Array(orderedNodes.length * 3);
+          orderedNodes.forEach((node, i) => { const p = coordinates.get(node.id); if (p) { coords![i * 3] = p.x; coords![i * 3 + 1] = p.y; coords![i * 3 + 2] = p.z; } });
+        }
         if (coords && coords !== coordsKey) {
           const packedWidth = Math.max(1, Math.ceil(Math.sqrt(orderedNodes.length)));
           renderer.positions(coords, packedWidth, Math.max(1, Math.ceil(orderedNodes.length / packedWidth)));
@@ -159,10 +179,11 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
       }
       // The picker index is rebuilt lazily on the next hover/click (hoverAt), not per camera frame.
       if (showTitles) {
-        const labeled = [...labelNodes].sort((a, b) => Number(b.id === focus) - Number(a.id === focus) || Number(isMemoryCoreLabel(b.label)) - Number(isMemoryCoreLabel(a.label)) || Number(b.type === "SOURCE") - Number(a.type === "SOURCE"));
+        // Priority ordering (focus, core, source) is decided by the buckets in
+        // selectMemory3DLabels, so no full-array sort is needed before the call.
         context.font = "11px system-ui, sans-serif";
         const labels = selectMemory3DLabels({
-          nodes: labeled, focus, zoom: cameraRef.current.zoom, width, height,
+          nodes: labelNodes, focus, zoom: cameraRef.current.zoom, width, height,
           project: id => {
             const existing = projected.get(id);
             if (existing) return existing;

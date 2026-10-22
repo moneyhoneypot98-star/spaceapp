@@ -229,8 +229,14 @@ export function createMemory3DWebGLRenderer(canvas: HTMLCanvasElement, gl: WebGL
     };
     const positions: Memory3DWebGLRenderer["positions"] = (packed, width, height) => {
       posWidth = width; posHeight = height;
+      // RGBA32F texels are four floats each while the stream carries xyz triples,
+      // so repack in order: texel i := (x, y, z, 0) for node i, remaining alpha = 0.
+      const texels = new Float32Array(width * height * 4);
+      for (let i = 0, n = Math.min(packed.length / 3, width * height); i < n; i++) {
+        texels[i * 4] = packed[i * 3]!; texels[i * 4 + 1] = packed[i * 3 + 1]!; texels[i * 4 + 2] = packed[i * 3 + 2]!;
+      }
       gl.bindTexture(gl.TEXTURE_2D, positionsTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, posWidth, posHeight, 0, gl.RGBA, gl.FLOAT, packed);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, posWidth, posHeight, 0, gl.RGBA, gl.FLOAT, texels);
     };
     const updateFocus: Memory3DWebGLRenderer["updateFocus"] = focus => {
       const states = new Float32Array(nodeCount);
