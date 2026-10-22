@@ -20,3 +20,4 @@ a43e799de92bcbfbfd653f580acab0a19c31aa5c:apps/api/tests/cors-origin-guard.test.t
 e5a2a1dc6e63af7d9eecc8b5809c6d566dcb3b9c:packages/gateway/src/providers/claude/oauth.ts:generic-api-key:7
 eb318bf4935f3b6ab6e11b2e4bb114bf150786cd:apps/web/tests/owner-setup.test.tsx:generic-api-key:260
 eb318bf4935f3b6ab6e11b2e4bb114bf150786cd:packages/gateway/src/providers/claude/oauth.ts:generic-api-key:7
+81b7da47a58a211112f8068147ffa35ec9e6de36:apps/worker/tests/nous-turn.test.ts:generic-api-key:11
