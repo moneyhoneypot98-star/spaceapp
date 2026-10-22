@@ -191,3 +191,17 @@ jobs:
           # so headless Chromium can be launched natively on BOTH architectures.
           docker exec browser-smoke gosu spaceapp chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom about:blank > /dev/null
           echo "browser smoke: headless Chromium rendered about:blank natively on linux/${{ matrix.arch }}"
+          # Headed sessions are the API default (/usr/bin/Xvfb): the X server must start in the image.
+          docker exec -d browser-smoke sh -c 'exec gosu spaceapp /usr/bin/Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > /tmp/xvfb-smoke.log 2>&1'
+          for attempt in $(seq 1 20); do
+            if docker exec browser-smoke test -S /tmp/.X11-unix/X99; then
+              echo "browser smoke: Xvfb display :99 is up natively on linux/${{ matrix.arch }}"
+              break
+            fi
+            if [ "${attempt}" = "20" ]; then
+              echo "browser smoke: Xvfb never opened display :99"
+              docker exec browser-smoke cat /tmp/xvfb-smoke.log || true
+              exit 1
+            fi
+            sleep 1
+          done
