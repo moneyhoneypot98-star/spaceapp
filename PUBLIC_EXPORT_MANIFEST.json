@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "sourceCommit": "c067c535c2626f5041b9705eebbe22f5c31ac75f",
   "fileCount": 4729,
-  "transformations": 406,
+  "transformations": 407,
   "files": [
     {
       "path": ".gitignore",
@@ -15650,8 +15650,8 @@
     {
       "path": "apps/web/src/features/app-notices/useAppNotices.ts",
       "sourceObjectId": "e7e39928364fa60f24e8478fdd334dfe4f2d8203",
-      "sha256": "9c5745054f84f0acdabb9b59aa7bd65be1009b099143e0ef29ae175d388dc7fc",
-      "size": 8122
+      "sha256": "cd9b9055e23cd50c23e8ea85cfc4fd42f41649ba52487bb558db84012db6c1d9",
+      "size": 8421
     },
     {
       "path": "apps/web/src/features/app-studio-pane/ActivityTab.tsx",
