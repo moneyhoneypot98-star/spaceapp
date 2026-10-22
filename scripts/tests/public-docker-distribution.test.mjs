@@ -128,6 +128,15 @@ test("CLI image removes the npm download cache in the same layer as bundled CLI 
   assert.match(normalizedCliStage, /apt-get install -y --no-install-recommends python3-minimal\s+&& rm -rf \/var\/lib\/apt\/lists\/\*/);
 });
 
+test("CLI image drops the unused OpenCode platform binaries in the install layer (issue #64 cli budget)", async () => {
+  const dockerfile = await readFile(join(root, "Dockerfile"), "utf8");
+  const cliStage = dockerfile.slice(dockerfile.indexOf("FROM runtime-base AS cli")).replace(/\\\r?\n\s*/g, " ");
+  // One RUN line after joining continuations: the removal must share the install's layer or the bytes stay in the image.
+  assert.match(cliStage, /npm install[^\n]*@opencode\/cli@2\.0\.32[^\n]*&& rm -rf \/usr\/local\/lib\/node_modules\/@opencode\/cli\/node_modules /);
+  // The kept binary is the native ELF that `opencode` on PATH resolves to, not a launcher needing the removed packages.
+  assert.match(cliStage, /rm -rf \/usr\/local\/lib\/node_modules\/@opencode\/cli\/node_modules[^\n]*= 7f454c46[^\n]*amd64\) machine=3e ;; arm64\) machine=b7 ;;[^\n]*-j18 -N1[^\n]*= "\$machine"[^\n]*readlink -f \/usr\/local\/bin\/opencode\)" = \/usr\/local\/lib\/node_modules\/@opencode\/cli\/bin\/opencode\.exe/);
+});
+
 test("CLI image resolves the default room project /opt/spaceapp to the documented /etc session directory", async () => {
   // 1.1.3 devtest: without it the Getting Started OpenCode pane exited with chdir(2) failed.
   const dockerfile = await readFile(join(root, "Dockerfile"), "utf8");

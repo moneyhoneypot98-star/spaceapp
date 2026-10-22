@@ -128,6 +128,12 @@ jobs:
           for attempt in $(seq 1 60); do
             if docker exec cli-smoke sh -c 'test -S /run/spaceapp-cli/host.sock'; then
               echo "cli smoke: CLI host socket exists on attempt ${attempt}"
+              opencode_version="$(docker exec -u spaceapp cli-smoke opencode --version || true)"
+              if [ "$opencode_version" != "opencode v2.0.32" ]; then
+                echo "cli smoke: expected opencode v2.0.32 as spaceapp, got: ${opencode_version:-<no output>}"
+                exit 1
+              fi
+              echo "cli smoke: OpenCode answers ${opencode_version} as spaceapp"
               docker exec cli-smoke node -e "const net=require('node:net');const s=net.createConnection({path:'/run/spaceapp-cli/host.sock'});s.on('connect',()=>{console.log('cli smoke: socket accepted a connection');s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),5000)"
               exit 0
             fi

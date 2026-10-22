@@ -108,11 +108,22 @@ COPY --chown=root:root starter-memory/installation-guide.md /etc/spaceapp-instal
 RUN chmod 0644 /etc/AGENTS.md
 ARG TARGETARCH
 # python3-minimal (about 13 MB): agents often check their work with a short python3 script (pilot F18).
-# OpenCode 2 (@opencode/cli): its postinstall picks the native binary for the image's platform.
+# OpenCode 2 (@opencode/cli): its postinstall links the native binary for the image's platform to
+# bin/opencode.exe. npm also installs every linux package for the CPU (four ~212 MB binaries on amd64:
+# glibc/musl, AVX2/baseline; two on arm64); only the linked one runs, so the packages are removed in
+# this layer. The checks are static (ELF magic and machine, PATH link) so an emulated arm64 build never
+# executes the binary; the Container matrix smoke runs it natively.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3-minimal \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global --no-audit --no-fund @opencode/cli@2.0.32 \
+    && rm -rf /usr/local/lib/node_modules/@opencode/cli/node_modules \
+    && test -f /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe \
+    && test ! -L /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe \
+    && test "$(od -An -tx1 -N4 /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe | tr -d ' ')" = 7f454c46 \
+    && case "${TARGETARCH:-$(dpkg --print-architecture)}" in amd64) machine=3e ;; arm64) machine=b7 ;; *) machine=unknown ;; esac \
+    && test "$(od -An -tx1 -j18 -N1 /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe | tr -d ' ')" = "$machine" \
+    && test "$(readlink -f /usr/local/bin/opencode)" = /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe \
     && install -d -o spaceapp -g spaceapp -m 0700 /var/lib/spaceapp-cli/vendor \
     && npm cache clean --force \
     && install -d -o spaceapp -g spaceapp -m 0700 \
