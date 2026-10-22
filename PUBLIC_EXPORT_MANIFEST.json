@@ -17414,8 +17414,8 @@
     {
       "path": "apps/web/src/features/memory-workspace/MemoryGraph3D.tsx",
       "sourceObjectId": "34a99f3d5257fce6cb4af9e3a56e887b77269c5b",
-      "sha256": "eb070ab0390d643f7b8325341a7072b1cc0ff2dc3f86068e060f62b176983c4b",
-      "size": 18324
+      "sha256": "d565b44a194dde05d1db424a291d1f467d7a5d0e748847eb7e43aa28e54078d1",
+      "size": 18519
     },
     {
       "path": "apps/web/src/features/memory-workspace/MemoryGraphErrorBoundary.tsx",
