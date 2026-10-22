@@ -14,7 +14,7 @@ const mebibyte = 1024 * 1024;
 // scripts/container-image-size-budget.mjs in the Container matrix run on both
 // architectures (2026-10-22, 1.1.7; was = upstream main 1.1.7):
 //   core:    702.9 MiB linux/amd64, 733.2 MiB linux/arm64 (was 1057.6 / 1079.8)
-//   browser: 1193.6 MiB linux/amd64, 1217.7 MiB linux/arm64 (was 1732.8 / 1747.9)
+//   browser: 1196.7 MiB linux/amd64, 1221.4 MiB linux/arm64 (was 1732.8 / 1747.9; with xvfb)
 //   cli:      637.3 MiB linux/amd64, 669.0 MiB linux/arm64 (was 1889.3 / 1496.9)
 export const containerImageSizeBudgets = Object.freeze({
   core: 800 * mebibyte,
