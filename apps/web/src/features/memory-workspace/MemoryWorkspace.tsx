@@ -102,7 +102,14 @@ export function MemoryWorkspace({ shellMode, onClose, initialMode = "calendar" }
   const atlas = useMemo(() => createMemoryAtlas(graph?.data.nodes ?? [], graph?.data.edges ?? [], false), [graph]);
   // The 2D map keeps today's overview size: it never saw more than 2,000 nodes before the
   // full-graph limit existed, and its batched reveal would monopolize the main thread otherwise.
-  const cappedAtlas = useMemo(() => cappedFallbackGraph(atlas.nodes, atlas.edges, selectedNodeId), [atlas, selectedNodeId]);
+  // The base capped set is computed once per atlas; selection only participates when the
+  // selected node is not already in it, so a click does not re-sort 50k nodes and restart
+  // the Sigma batched reveal.
+  const baseCappedAtlas = useMemo(() => cappedFallbackGraph(atlas.nodes, atlas.edges, null), [atlas]);
+  const cappedAtlas = useMemo(() => {
+    if (!selectedNodeId || baseCappedAtlas.nodes.some(node => node.id === selectedNodeId)) return baseCappedAtlas;
+    return cappedFallbackGraph(atlas.nodes, atlas.edges, selectedNodeId);
+  }, [atlas, baseCappedAtlas, selectedNodeId]);
   const [layout, setLayout] = useState<{ atlas: typeof atlas; positions: Map<string, MemoryAtlasPosition>; depth: Map<string, MemoryPoint3D>; packed: { ids: string[]; coords: Float32Array } | null } | null>(null);
   const [streamLayout, setStreamLayout] = useState<{ atlas: typeof atlas; depth: Map<string, MemoryPoint3D>; packed: { ids: string[]; coords: Float32Array } } | null>(null);
   useEffect(() => {

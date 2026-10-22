@@ -53,6 +53,8 @@ test("user enable, add and remove give each user a CLI container and the core it
   assert.match(stdout.value(), /The CLI container of user:Bob12345 is ready/);
   compose = await readFile(join(root, "compose.workspaces.yml"), "utf8");
   assert.match(compose, new RegExp(`spaceapp-cli-${slug}:`));
+  // A user's CLI container runs the same pinned image as the owner's (1.1.7 review: a moved tag cannot change it).
+  assert.match(compose, new RegExp(`  spaceapp-cli-${slug}:\\n    image: ghcr\\.io/oll4com/spaceapp-cli:\\$\\{SPACEAPP_IMAGE_TAG\\}\\$\\{SPACEAPP_CLI_IMAGE_DIGEST:-\\}\\n`));
   assert.match(compose, /mem_limit: "1536m"/);
   for (const volume of ["cli-state", "memory", "cli-socket", "workspaces"]) assert.match(compose, new RegExp(`spaceapp-${volume}-${slug}:`));
   assert.match(compose, new RegExp(`\\./secrets/users/${slug}/providers:/run/spaceapp-secrets/providers:ro`));

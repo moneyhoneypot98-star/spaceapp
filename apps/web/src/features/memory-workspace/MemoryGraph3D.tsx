@@ -72,8 +72,12 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
     // orderedNodes is keyed on both identities: caching on the packed object alone would
     // never seed a mount that starts with packedCoordinates = null (FeatureShowcase),
     // leaving the WebGL path with an empty node list.
-    let orderedSrc: MemoryGraphNode[] | null = null, orderedPacked: { ids: string[]; coords: Float32Array } | null = null, orderedNodes: MemoryGraphNode[] = [];
-    let fallbackKey = "", fallbackNodes: MemoryGraphNode[] = [], fallbackEdges: MemoryGraphEdge[] = [];
+    let orderedSrc: MemoryGraphNode[] | null = null, orderedIds: string[] | null = null, orderedNodes: MemoryGraphNode[] = [];
+    // Identity-keyed (not count-keyed): a new graph with identical counts must rebuild,
+    // exactly like the WebGL upload key. The validity flag avoids the empty-vs-initial
+    // undefined trap that a sentinel comparison alone would have.
+    let fallbackValid = false, fallbackSrcNodes: MemoryGraphNode[] | null = null, fallbackSrcEdges: MemoryGraphEdge[] | null = null, fallbackSelected: string | null | undefined = undefined;
+    let fallbackNodes: MemoryGraphNode[] = [], fallbackEdges: MemoryGraphEdge[] = [];
     const picker = createMemory3DPicker();
     const pointers = new Map<number, { x: number; y: number }>();
     let dragged = false, downX = 0, downY = 0;
@@ -87,8 +91,12 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
     };
     const orderedFor = () => {
       const { nodes: src, packedCoordinates: packed } = current.current;
-      if (orderedSrc !== src || orderedPacked !== packed) {
-        orderedSrc = src; orderedPacked = packed;
+      // Keyed on the ids array, not the packed wrapper: MemoryWorkspace reuses its
+      // streamIds array for every streamed progress message, so only a real order
+      // change (or a node list change) may rebuild orderedNodes and re-upload geometry.
+      const ids = packed?.ids ?? null;
+      if (orderedSrc !== src || orderedIds !== ids) {
+        orderedSrc = src; orderedIds = ids;
         if (packed) {
           const byId = new Map(src.map(node => [node.id, node]));
           orderedNodes = packed.ids.map(id => byId.get(id)).filter(node => node !== undefined);
@@ -100,9 +108,8 @@ export function MemoryGraph3D({ nodes, edges, positions, coordinates, packedCoor
     };
     const fallbackFor = () => {
       const { nodes, edges, selectedNodeId } = current.current;
-      const key = `${nodes.length}|${edges.length}|${selectedNodeId}`;
-      if (key !== fallbackKey) {
-        fallbackKey = key;
+      if (!fallbackValid || nodes !== fallbackSrcNodes || edges !== fallbackSrcEdges || selectedNodeId !== fallbackSelected) {
+        fallbackValid = true; fallbackSrcNodes = nodes; fallbackSrcEdges = edges; fallbackSelected = selectedNodeId;
         const capped = cappedFallbackGraph(nodes, edges, selectedNodeId);
         fallbackNodes = capped.nodes; fallbackEdges = capped.edges;
       }

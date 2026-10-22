@@ -17414,8 +17414,8 @@
     {
       "path": "apps/web/src/features/memory-workspace/MemoryGraph3D.tsx",
       "sourceObjectId": "34a99f3d5257fce6cb4af9e3a56e887b77269c5b",
-      "sha256": "3079dc672c9ee6f6a7e3bb87c37326f1d934b218dbe346af612aac509cd33793",
-      "size": 10006
+      "sha256": "eb070ab0390d643f7b8325341a7072b1cc0ff2dc3f86068e060f62b176983c4b",
+      "size": 18324
     },
     {
       "path": "apps/web/src/features/memory-workspace/MemoryGraphErrorBoundary.tsx",
@@ -17450,8 +17450,8 @@
     {
       "path": "apps/web/src/features/memory-workspace/MemoryWorkspace.tsx",
       "sourceObjectId": "0cbadd5439880f77f1d2e8086ecc8b1d5773bb1c",
-      "sha256": "e9817493f2f705c65e4afdc0aac54ab4cf225a0cb97cc2819442a9833aa53f2f",
-      "size": 14671
+      "sha256": "5d3a95ddd02a55081a3e90bf3b16fe2f1ec4d7f1a5d8ef03e705ee28b7ced8e8",
+      "size": 17590
     },
     {
       "path": "apps/web/src/features/memory-workspace/MemoryWorkspaceErrorBoundary.tsx",
